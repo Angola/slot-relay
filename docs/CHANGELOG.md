@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-30
+
 ### Security
 
 - **本番で `TURNSTILE_SECRET_KEY` が未設定なら予約 POST を 503 にした。**
