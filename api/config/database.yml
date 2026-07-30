@@ -1,0 +1,18 @@
+# PostgreSQL 固有機能に依存する（btree_gist / EXCLUDE USING gist / tstzrange）。
+# 本番は Coolify の PostgreSQL を DATABASE_URL で指定する。
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: <%= ENV.fetch("DATABASE_NAME", "slot_relay_development") %>
+
+test:
+  <<: *default
+  database: <%= ENV.fetch("TEST_DATABASE_NAME", "slot_relay_test") %>
+
+production:
+  <<: *default
+  url: <%= ENV["DATABASE_URL"] %>

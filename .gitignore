@@ -18,11 +18,28 @@ tmp/
 *.pem
 *.key
 
-# 依存・ビルド成果物（言語選定後に必要に応じて追記）
-# node_modules/
-# dist/
-# build/
-# coverage/
+# 依存・ビルド成果物
+node_modules/
+coverage/
+
+# api/（Ruby on Rails）
+/api/log/*
+!/api/log/.keep
+/api/tmp/*
+!/api/tmp/.keep
+!/api/tmp/pids
+/api/tmp/pids/*
+!/api/tmp/pids/.keep
+/api/storage/*
+!/api/storage/.keep
+/api/.bundle/
+/api/vendor/bundle/
+
+# web/（Next.js）
+/web/.next/
+/web/out/
+/web/next-env.d.ts
+/web/*.tsbuildinfo
 
 # Terraform（IaC を使う場合。認証情報を含むため必ず除外）
 # *.tfvars

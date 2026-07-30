@@ -1,0 +1,17 @@
+新しい予約が入りました。
+
+予約番号: <%= @reservation.public_id %>
+メニュー: <%= @booking_type.name %>（<%= @booking_type.slug %>）
+日時    : <%= @period %>（<%= @booking_type.time_zone %>）
+
+会社名  : <%= @reservation.guest_company.presence || "-" %>
+お名前  : <%= @reservation.guest_name %>
+メール  : <%= @reservation.guest_email %>
+電話番号: <%= @reservation.guest_phone.presence || "-" %>
+<% @reservation.answers.each do |key, value| -%>
+
+<%= key %>:
+<%= value %>
+<% end -%>
+
+Google カレンダーの予定 ID: <%= @reservation.google_event_id.presence || "-" %>

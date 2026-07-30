@@ -1,0 +1,14 @@
+Google カレンダー連携でエラーが発生しました。手動での確認が必要です。
+
+予約番号: <%= @reservation.public_id %>
+状態    : <%= @reservation.status %>
+メニュー: <%= @booking_type.name %>（<%= @booking_type.slug %>）
+日時    : <%= @period %>（<%= @booking_type.time_zone %>）
+予定 ID : <%= @reservation.google_event_id.presence || "-" %>
+
+エラー内容:
+<%= @error_message %>
+
+対応の目安:
+- status が failed の場合、予約は成立していません（枠は解放済み）。
+- status が cancelled の場合、Google カレンダー側に予定が残っている可能性があります。

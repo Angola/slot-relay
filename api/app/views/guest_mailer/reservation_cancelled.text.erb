@@ -1,0 +1,9 @@
+<%= @reservation.guest_name %> 様
+
+下記のご予約をキャンセルしました。
+
+予約番号: <%= @reservation.public_id %>
+メニュー: <%= @booking_type.name %>
+日時    : <%= @period %>（<%= @booking_type.time_zone %>）
+
+またのご利用をお待ちしております。
