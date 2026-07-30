@@ -22,6 +22,11 @@ module SlotRelay
     :google_busy_calendar_ids,
     :google_booking_calendar_id,
     :turnstile_secret_key,
+    # Turnstile を必須にするか。true なら未設定のとき予約 POST を 503 にする
+    # （「未設定なら素通し」を本番で起こさないため）
+    :require_turnstile,
+    # API ドキュメント（/docs・/openapi.json）を公開するか
+    :api_docs_enabled,
     :admin_notification_email,
     :mail_from,
     :public_base_url,
@@ -47,6 +52,12 @@ module SlotRelay
 
     def turnstile_configured?
       turnstile_secret_key.present?
+    end
+
+    # 「必須なのに未設定」= 予約を受けてはいけない状態。
+    # 管理 API キーが未設定なら 503 にするのと同じ考え方（docs/SECURITY.md）。
+    def turnstile_missing?
+      require_turnstile && !turnstile_configured?
     end
 
     def admin_api_configured?
@@ -76,6 +87,11 @@ module SlotRelay
         google_busy_calendar_ids: split_list(ENV["GOOGLE_BUSY_CALENDAR_IDS"]),
         google_booking_calendar_id: ENV["GOOGLE_BOOKING_CALENDAR_ID"].presence,
         turnstile_secret_key: ENV["TURNSTILE_SECRET_KEY"].presence,
+        # 本番は Turnstile を必須にする。ローカル・テストは未設定でも通す
+        require_turnstile: Rails.env.production?,
+        # ドキュメントは本番では既定で閉じる（管理 API の構成を見せないため）。
+        # 本番でも読みたいときは ENABLE_API_DOCS=true を設定する。
+        api_docs_enabled: Rails.env.local? || ENV["ENABLE_API_DOCS"] == "true",
         admin_notification_email: ENV["ADMIN_NOTIFICATION_EMAIL"].presence,
         mail_from: ENV["SMTP_FROM"].presence || "info@genba-tsunagu.jp",
         public_base_url: ENV["PUBLIC_BASE_URL"].presence || "https://booking-api.genba-tsunagu.jp",

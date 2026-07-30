@@ -71,7 +71,8 @@ Busy 時間は空・予定は作成されない（起動時に警告が出る）
 | `SMTP_USER` / `SMTP_PASSWORD` | SMTP 認証情報 | — |
 | `SMTP_FROM` | 送信元 | `info@genba-tsunagu.jp` |
 | `ADMIN_NOTIFICATION_EMAIL` | 管理者通知の宛先（未設定なら送らない） | `me@example.com` |
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile（未設定なら検証をスキップ） | — |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile。**本番では必須。未設定だと予約 POST が 503 になる**（素通しにするとダミー予約でカレンダーが埋まるため） | — |
+| `ENABLE_API_DOCS` | `true` のときだけ本番で `/docs` と `/openapi.json` を公開する。既定は非公開（404） | 未設定 |
 | `CANCEL_URL_BASE` | キャンセル画面をサイト側に置く場合の URL ベース | `https://genba-tsunagu.jp/booking` |
 | `RAILS_LOG_LEVEL` | ログレベル | `info` |
 | `RAILS_MAX_THREADS` | Puma スレッド数・DB プール | `5` |
