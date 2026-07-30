@@ -10,6 +10,76 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 設定画面のセッション Cookie を `SameSite=Strict` から **`Lax`** に変えた。
+  Strict だと Google からのコールバック（別サイト起点のナビゲーション）で Cookie が送られず、
+  連携に成功しても必ずログイン画面へ戻ってしまう。Lax でもクロスサイトの POST には
+  送られないため CSRF 対策は維持される（署名付き CSRF トークンも別途ある）。
+- 認可コードの交換に失敗したとき、Google の応答本文（`error` / `error_description`）を
+  ログに出すようにした。Signet の例外メッセージだけでは原因が分からなかったため。
+- `CLAUDE.md` のブランチ運用に「PR 作成で止めず、CI 確認後にスカッシュマージして
+  `main` を更新するところまで完了させる」を追加した。
+- **Google カレンダー連携の認証をサービスアカウントからユーザー OAuth へ移行した**（破壊的変更）。
+  経緯・却下した案は `docs/plans/2026-07-30-google-oauth-calendar-selection.md`。
+  - **環境変数が変わる。** `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
+    を廃止し、`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` /
+    `GOOGLE_OAUTH_REDIRECT_URI`（省略可）を追加。デプロイ後に一度だけ連携操作が要る（`docs/DEPLOY.md`）。
+  - スコープを全権の `calendar` から `calendar.calendarlist.readonly` /
+    `calendar.freebusy` / `calendar.events` の 3 つに絞った。
+  - refresh token は `SECRET_KEY_BASE` 由来の鍵で暗号化して DB に保存する。
+    **`SECRET_KEY_BASE` を差し替えると再連携が必要**（`docs/SECURITY.md`）。
+  - `GOOGLE_BUSY_CALENDAR_IDS` / `GOOGLE_BOOKING_CALENDAR_ID` は「予約メニュー側で
+    未選択のときの既定値」に降格。カレンダーは画面から選ぶ。
+- 未連携・トークン失効時の挙動を変えた。本番は `GoogleCalendar::UnavailableClient` が
+  **502（CALENDAR_ERROR）** を返す。従来のように黙って「Busy 時間が空」＝全部空きにはしない。
+  `NullClient` は development / test のみ。
+- `config.api_only = true` のまま `ActionDispatch::Cookies` を戻した。
+  Cookie を使うのは Google 連携の設定画面だけで、公開 API・管理 API は従来どおり Cookie を使わない。
+- `db/seeds.rb` の許可 Origin を `DEV_ALLOWED_ORIGINS` で追加できるようにした。
+  参照実装 UI のポートを 3000 以外にしても CORS で弾かれない。既定値は従来どおり。
+- README の「ローカルで動かす」「テスト」を compose 前提の手順に差し替えた。
+
+### Added
+
+- **Google 連携とカレンダー選択の画面・API を追加した。**
+  - `POST /v1/admin/google/oauth/url` — 同意画面の URL を発行（10 分で失効）。
+    管理 API キーを URL に載せないため、発行と同意を 2 段に分けている。
+  - `GET /v1/admin/google/oauth/callback` — 同意後の戻り先。Google からのリダイレクトで
+    `X-Admin-Key` を付けられないため、署名付き `state` で正当性を確認する。
+  - `GET /v1/admin/google/calendars` — 連携アカウントのカレンダー一覧（書き込み可否つき）。
+  - `POST /v1/admin/google/login` / `POST /v1/admin/google/connect` —
+    **ブラウザだけで連携を完結させる導線**。設定画面を直接開くとログインフォームが出て、
+    管理 API キーを POST ボディで送ると短期セッションに引き換わる。
+    そこから「Google と連携する」で同意画面へ進める（curl が要らない）。
+  - `GET|POST /v1/admin/google/setup` — **カレンダー設定画面**（サーバー描画の HTML）。
+    予約メニューごとに登録先カレンダー（ラジオ）と空き判定カレンダー（チェックボックス）を選ぶ。
+    認証は同意直後の短期セッション Cookie（30 分・HttpOnly・SameSite=Strict）か `X-Admin-Key`。
+    Cookie 認証の POST には署名付き CSRF トークンを必須にした。
+  - `POST /v1/admin/google/disconnect` — 連携解除。
+- **空き判定に使うカレンダーを予約メニュー単位で持てるようにした**
+  （`booking_types.google_busy_calendar_ids`）。管理 API の `googleBusyCalendarIds` でも指定できる。
+  未設定なら従来どおり `GOOGLE_BUSY_CALENDAR_IDS` を使う。
+- `google_connections` テーブル（連携アカウント 1 件・refresh token は暗号化）。
+
+- **ローカル開発環境を Docker Compose に載せた**（`compose.yaml` / `api/Dockerfile.dev` /
+  `.env.example`）。`docker compose up -d` だけで API + PostgreSQL 16 + 参照実装 UI が起動する。
+  ホストに Ruby・PostgreSQL を入れる必要がなくなった。
+  経緯は `docs/plans/2026-07-30-local-compose.md`。
+  - ポートは `.env` で変更でき、既定は API 3011 / web 3012 / PostgreSQL 55432
+    （3000・3001 は他プロジェクトと衝突しやすいため既定をずらした）。
+  - `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` はルートの `.env` に書けば
+    api コンテナへ渡る（compose のルート `.env` は本来 `${...}` の展開にしか使われないため、
+    明示的に受け渡している）。`api/.env` に書いてもよい。
+  - コンテナはホストと同じ uid/gid で動かし、バインドマウント先に root 所有のファイルを作らない。
+  - DB データは名前付きボリューム `db-data`。`docker compose down -v` で明示的に削除する。
+
+### Changed
+
+- `db/seeds.rb` の許可 Origin を `DEV_ALLOWED_ORIGINS` で追加できるようにした。
+  参照実装 UI のポートを 3000 以外にしても CORS で弾かれない。既定値は従来どおり。
+- README の「ローカルで動かす」「テスト」を compose 前提の手順に差し替えた。
+
 ## [0.2.0] - 2026-07-30
 
 ### Added

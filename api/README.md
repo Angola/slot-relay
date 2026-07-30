@@ -5,6 +5,14 @@ Ruby on Rails 8.1（API モード）+ PostgreSQL 16。
 
 ## セットアップ
 
+推奨はリポジトリ最上位からの Docker Compose（ホストに Ruby・PostgreSQL が要らない）。
+
+```bash
+cd .. && docker compose up -d      # api は http://localhost:3011
+```
+
+ホストに Ruby 3.3 / PostgreSQL 16 が揃っているなら直接でもよい。
+
 ```bash
 bin/setup            # bundle install + DB 作成・マイグレーション
 bin/rails db:seed    # 開発用の予約メニュー（genba-tsunagu-consultation）
@@ -12,8 +20,9 @@ bin/rails server -p 3001
 ```
 
 環境変数は `.env.example` を参照（`dotenv-rails` が development / test で `.env` を読む）。
-Google サービスアカウントが未設定なら `GoogleCalendar::NullClient` が使われ、
-Busy 時間は空・予定は作成されない。本番で未設定だと起動時に例外になる。
+Google が未連携なら development では `GoogleCalendar::NullClient` が使われ、
+Busy 時間は空・予定は作成されない。**本番では `UnavailableClient` になり 502 を返す**
+（黙って「全部空き」にしないため）。連携手順は `docs/DEPLOY.md`。
 
 ## テスト
 
@@ -21,6 +30,9 @@ Busy 時間は空・予定は作成されない。本番で未設定だと起動
 bin/rails test              # 全 176 件
 bin/rails test test/services/availability_calculator_test.rb
 bin/ci                      # setup + 依存監査 + テスト + seed
+
+# compose 経由
+docker compose exec -e RAILS_ENV=test api bin/rails test
 ```
 
 - 外部 HTTP（Google Calendar / Cloudflare Turnstile）は WebMock で遮断している。

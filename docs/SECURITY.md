@@ -50,13 +50,20 @@
 | キャンセルトークンの漏洩・DB 流出 | DB には SHA-256 ハッシュのみ保存。生の値は発行時のメモリとメール本文だけ | 対応済み |
 | キャンセルトークンの推測 | `SecureRandom.urlsafe_base64(32)`（256 bit） | 対応済み |
 | CORS | 予約メニューごとの許可 Origin を DB で管理し、レスポンスに `Vary: Origin` を付ける。CORS 自体は防御に数えない | 対応済み |
+| OAuth コールバックが無認証で叩かれる | コールバックは Google からのリダイレクトで `X-Admin-Key` を付けられない。代わりに `state` を署名付きトークン（10 分で失効）にして検証する。有効な `state` の発行には管理キーが要る | 対応済み |
+| 設定画面のセッション悪用 | 同意直後に発行する Cookie は **HttpOnly / SameSite=Lax / 30 分失効 / path=`/v1/admin/google`**、production では Secure。Strict にすると Google からのコールバック（別サイト起点のナビゲーション）で Cookie が送られず連携が完了しないため Lax にしている | 対応済み |
+| 設定画面への CSRF | Cookie で認証する唯一の画面のため、POST は署名付き CSRF トークン（セッションの nonce に紐づく）を必須にする。SameSite=Lax もクロスサイトの POST には Cookie を送らない。`X-Admin-Key` 経由はブラウザが自動送信しないため対象外 | 対応済み |
+| 管理キーが URL に載る | 設定画面のログインは**フォームの POST ボディ**で管理キーを受け取り、短期セッション Cookie に引き換える。クエリには置かない。設定画面には `<meta name="referrer" content="no-referrer">` と `noindex` を付ける | 対応済み |
+| 設定画面ログインの総当たり | `/v1/admin` 配下のレートリミット（既定 60req/60s）が効く。比較は `secure_compare`。失敗は IP つきでログに残す | 対応済み |
 
 ## 3. シークレット管理
 
 | 懸念 | 対策方針 | 状況 |
 |---|---|---|
 | API キー・認証情報の漏洩 | リポジトリに平文で置かない。すべて Coolify の環境変数。`.env` は `.gitignore` 済み（`.env.example` は値なし） | 対応済み |
-| Google 秘密鍵のログ流出 | `config.filter_parameters` に `private_key` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` を追加。Google API のエラーは Google 由来のメッセージのみログに残す | 対応済み |
+| Google の認可コード・トークンのログ流出 | `config.filter_parameters` に `code` / `state` / `refresh_token` / `access_token` / `client_secret` / `GOOGLE_OAUTH_CLIENT_SECRET` を追加。Google API のエラーは Google 由来のメッセージのみログに残す | 対応済み |
+| **refresh token の DB 流出** | 平文で保存しない。`SECRET_KEY_BASE` から `key_generator` で導出した鍵の `ActiveSupport::MessageEncryptor` で暗号化して保存する。API 応答・設定画面には暗号文も含めて出さない（テストで検証） | 対応済み |
+| refresh token の暗号鍵の管理 | `SECRET_KEY_BASE` に相乗りしている。ActiveRecord Encryption を使うと production 必須の環境変数が 3 本増えるため（`docs/plans/2026-07-30-google-oauth-calendar-selection.md`）。**`SECRET_KEY_BASE` を回すと復号できなくなり、Google の再連携が必要**。復号失敗時は例外にせず「未連携」として扱い、502 で気づけるようにしている | 対応済み（運用注意） |
 | API 仕様書からの秘密情報の漏洩 | `/openapi.json` に管理キー・秘密鍵・SMTP 情報を含めない（テストで検証） | 対応済み |
 | CI からの漏洩 | GitHub Secrets を使用。ログへのエコー禁止。CI では実シークレットを使わない | 運用ルール化 |
 | Docker イメージへのシークレット同梱 | `.dockerignore` で `.env` を除外。秘密は実行時の環境変数のみ | 対応済み |
@@ -67,7 +74,9 @@
 | 懸念 | 対策方針 | 状況 |
 |---|---|---|
 | 予約者の個人情報のログ流出 | `config.filter_parameters` に `guest` / `name` / `email` / `company` / `phone` / `answers` / `turnstileToken` を追加 | 対応済み |
-| Google カレンダーの個人予定の内容が API へ流れる | 空き判定は **FreeBusy API のみ**。空き判定対象カレンダーは「予定の時間枠のみ表示」権限で共有する | 対応済み（Google 側の共有設定が前提） |
+| Google カレンダーの個人予定の内容が API へ流れる | 空き判定は **FreeBusy API のみ**。件名・説明・参加者は取得しない | 対応済み |
+| **OAuth 化による権限分離の後退** | サービスアカウント時代は個人カレンダーを「予定の時間枠のみ表示」で共有し、**資格情報そのものが内容を読めなかった**。ユーザー OAuth では 1 つの資格情報に権限が集まるため、`calendar.events` スコープを持つトークンは予定の内容を読めてしまう。コードは FreeBusy しか呼ばないが、多層防御としては明確な後退。全権の `calendar` を避けて 3 つの最小スコープに分ける対策までにとどめている | **受容したリスク**（`docs/plans/2026-07-30-google-oauth-calendar-selection.md`） |
+| Google 連携が切れて「全部空き」になる | 未連携・トークン失効時は `GoogleCalendar::UnavailableClient` が 502 を返す。`NullClient`（空の Busy を返す）は development のみ | 対応済み |
 | Google 予定の内容が公開 API へ漏れる | 公開 API の応答は `timeZone` / `durationMinutes` / `days`（`date` と `startAt` / `endAt`）のみ。テストで検証 | 対応済み |
 | 内部設定の漏洩（バッファ・カレンダー ID） | 公開ペイロードから除外（`BookingTypeSerializer.public_payload`）。テストで検証 | 対応済み |
 | 個人情報の取り扱い・アクセス最小化 | 保持するのは氏名・メール・会社名・電話・`answers` のみ。管理 API とトークン保持者以外は読めない | 対応済み |

@@ -25,6 +25,7 @@ API の責務は 4 点だけ。
 | `api/` | 予約 API 本体（Ruby on Rails 8.1・API モード / PostgreSQL 16）。**これがプロダクト** |
 | `web/` | 予約フォームの**参照実装**（Next.js 15）。デプロイ対象ではない |
 | `docs/` | ドキュメント |
+| `compose.yaml` | ローカル開発環境（api + db + web）。本番は Coolify なので使わない |
 
 ## ドキュメント
 
@@ -42,30 +43,38 @@ API の責務は 4 点だけ。
 
 ## ローカルで動かす
 
-前提: Ruby 3.3 / Node.js 22 / PostgreSQL 16
+前提: Docker / Docker Compose v2。ホストに Ruby や PostgreSQL は要らない。
 
 ```bash
-# API（http://localhost:3001）
-cd api
-bin/setup                 # bundle install + DB 作成・マイグレーション
-bin/rails db:seed         # 開発用の予約メニューを作る
-bin/rails server -p 3001
-
-# 参照実装 UI（http://localhost:3000）— 別ターミナル
-cd web
-npm install
-cp .env.example .env.local   # NEXT_PUBLIC_BOOKING_API_URL=http://localhost:3001 に直す
-npm run dev
+cp .env.example .env      # ポートを変えたいときだけ編集する
+docker compose up -d      # 初回は gem / npm の導入で数分かかる
+docker compose logs -f api
 ```
 
-Google サービスアカウント未設定でも動く（Busy 時間は空・予定は作成されない）。
-API 仕様は http://localhost:3001/docs（Swagger UI）で確認できる。
+| | URL |
+| --- | --- |
+| 予約 API | http://localhost:3011 |
+| Swagger UI（API 仕様） | http://localhost:3011/docs |
+| 参照実装 UI | http://localhost:3012/booking |
+| PostgreSQL | `localhost:55432`（postgres / postgres） |
+
+既定のポートを 3000 / 3001 からずらしてあるのは衝突を避けるため。空いていれば `.env` で戻せる。
+Google 未連携でも動く（Busy 時間は空・予定は作成されない）。確認メールは SMTP へ送らず
+`api/tmp/mails/` にファイル出力される。Google 連携とカレンダー選択は
+http://localhost:3011/v1/admin/google/setup（手順は [`docs/DEPLOY.md`](docs/DEPLOY.md)）。
+
+```bash
+docker compose down       # 停止（DB データは残る）
+docker compose down -v    # 停止 + DB データ削除
+```
+
+詳細な意思決定は [`docs/plans/2026-07-30-local-compose.md`](docs/plans/2026-07-30-local-compose.md)。
 
 ## テスト
 
 ```bash
-cd api && bin/rails test    # 176 件
-cd web && npm test          # 15 件
+docker compose exec -e RAILS_ENV=test api bin/rails test   # 176 件
+docker compose exec web npm test                           # 15 件
 ```
 
 ## API の概要
@@ -83,6 +92,11 @@ POST /v1/public/reservations/:publicToken/cancel
 管理 API（`X-Admin-Key` 必須）
 
 ```
+POST               /v1/admin/google/oauth/url          # 同意画面の URL を発行
+GET                /v1/admin/google/oauth/callback     # 同意後の戻り先（state 署名で検証）
+GET                /v1/admin/google/calendars          # 連携アカウントのカレンダー一覧
+GET|POST           /v1/admin/google/setup              # カレンダー設定画面（HTML）
+POST               /v1/admin/google/disconnect         # 連携解除
 GET|POST           /v1/admin/booking-types
 GET|PATCH|DELETE   /v1/admin/booking-types/:id
 GET                /v1/admin/reservations

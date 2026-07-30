@@ -30,12 +30,23 @@ Google カレンダー連携の予約 API を Coolify に立て、genba-tsunagu.
 - ✅ Turnstile + レートリミット
 - ✅ Dockerfile・ヘルスチェック（`/health` / `/ready`）
 - ✅ 予約フォームの参照実装（Next.js）
+- ✅ ローカル開発環境を Docker Compose に載せる（`compose.yaml`）
+- ✅ Google 連携をユーザー OAuth に移行し、カレンダーを設定画面から選べるようにする
 - ⬜ Coolify へ配備してヘルスチェックが通ることを確認する
 - ⬜ PostgreSQL の日次バックアップを設定する
 - ⬜ genba-tsunagu.jp の予約フォームから接続する
 
 ## 1.x — 運用しながら埋めるところ
 
+- ⬜ **ゲストに Google カレンダーの招待を送る**（`attendees` + `sendUpdates`）。
+  OAuth 化で技術的には可能になった。確認メールを自前 SMTP で送っているため、
+  二重に届かないか含めて挙動を決める（`docs/plans/2026-07-30-google-oauth-calendar-selection.md`）
+- ⬜ **Google 連携が切れたことの検知と通知**。今は 502 になるまで気づけない。
+  同意画面が「テスト中」だと refresh token が 7 日で失効する点にも注意
+- ⬜ 認可 URL の `include_granted_scopes=true` を外すか決める。
+  過去に同じ OAuth クライアントへ与えた権限が合流するため、実際の同意結果に
+  `openid` / `userinfo.email` / `userinfo.profile` が混ざる。動作に害はないが、
+  最小権限に絞った建て付け（DESIGN §6.1）とは食い違う
 - ⬜ キャンセル期限（何時間前まで許可するか）を決める
 - ⬜ 予約データの保持期間・削除方針を決める
 - ⬜ 予約メニューを 2 つ目（kaizen-works-consultation など）追加して、複数サイト運用を実際に試す

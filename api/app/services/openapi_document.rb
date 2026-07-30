@@ -232,6 +232,93 @@ module OpenapiDocument
           }
         }
       }
+    }.merge(google_paths)
+  end
+
+  # Google 連携。連携は「認可 URL を発行 → ブラウザで同意 → 設定画面でカレンダーを選ぶ」の順。
+  def google_paths
+    {
+      "/v1/admin/google/oauth/url" => {
+        post: {
+          tags: ["admin"], summary: "Google 同意画面の URL を発行", operationId: "createGoogleAuthUrl",
+          description: "返ってきた authUrl をブラウザで開いて同意する。URL は 10 分で失効する。\n" \
+                       "管理 API キーを URL に載せないため、発行と同意を 2 段に分けている。",
+          security: [{ adminKey: [] }],
+          responses: {
+            "200" => json_response("認可 URL", {
+              type: "object",
+              properties: {
+                authUrl: { type: "string", format: "uri" },
+                redirectUri: { type: "string", format: "uri",
+                               description: "Google Cloud の「承認済みのリダイレクト URI」と一致させる" },
+                expiresInSeconds: { type: "integer", example: 600 }
+              }
+            }),
+            "503" => error_response("GOOGLE_OAUTH_CLIENT_ID / SECRET が未設定")
+          }
+        }
+      },
+      "/v1/admin/google/oauth/callback" => {
+        get: {
+          tags: ["admin"], summary: "同意後のコールバック（Google が呼ぶ）",
+          operationId: "googleOauthCallback",
+          description: "Google からのリダイレクト先。X-Admin-Key は付かないため state の署名で検証する。\n" \
+                       "成功すると refresh token を保存し、設定画面へリダイレクトする。",
+          parameters: [
+            { name: "code", in: "query", schema: { type: "string" } },
+            { name: "state", in: "query", schema: { type: "string" } },
+            { name: "error", in: "query", schema: { type: "string" },
+              description: "同意を拒否した場合などに Google が付ける" }
+          ],
+          responses: {
+            "302" => { description: "連携成功。設定画面へリダイレクトする" },
+            "400" => { description: "state が不正・認可コードの交換に失敗（HTML を返す）" }
+          }
+        }
+      },
+      "/v1/admin/google/calendars" => {
+        get: {
+          tags: ["admin"], summary: "連携アカウントのカレンダー一覧", operationId: "listGoogleCalendars",
+          description: "設定画面の選択肢と同じデータ。writable が true のものだけ予約の登録先にできる。",
+          security: [{ adminKey: [] }],
+          responses: {
+            "200" => json_response("カレンダー一覧", {
+              type: "object",
+              properties: {
+                connection: ref("GoogleConnection"),
+                calendars: { type: "array", items: ref("GoogleCalendar") }
+              }
+            }),
+            "502" => error_response("Google からカレンダーを取得できない（CALENDAR_ERROR）")
+          }
+        }
+      },
+      "/v1/admin/google/setup" => {
+        get: {
+          tags: ["admin"], summary: "カレンダー設定画面（HTML）", operationId: "googleSetupPage",
+          description: "同意直後に発行される短期セッション Cookie（30 分）か X-Admin-Key で開ける。",
+          security: [{ adminKey: [] }],
+          responses: { "200" => { description: "設定画面の HTML" },
+                       "401" => { description: "セッション切れ・認証なし" } }
+        },
+        post: {
+          tags: ["admin"], summary: "カレンダーの選択を保存", operationId: "saveGoogleCalendarSelection",
+          description: "フォーム送信（application/x-www-form-urlencoded）。Cookie 認証のときは " \
+                       "csrfToken が必須。X-Admin-Key のときは不要。",
+          security: [{ adminKey: [] }],
+          responses: { "200" => { description: "保存後の設定画面 HTML" },
+                       "403" => { description: "CSRF トークンが不正" },
+                       "422" => { description: "存在しない予約メニューを指定した" } }
+        }
+      },
+      "/v1/admin/google/disconnect" => {
+        post: {
+          tags: ["admin"], summary: "Google 連携を解除", operationId: "disconnectGoogle",
+          description: "保存済みの refresh token を削除する。以後、空き取得と予約登録は 502 になる。",
+          security: [{ adminKey: [] }],
+          responses: { "200" => { description: "解除後の設定画面 HTML" } }
+        }
+      }
     }
   end
 
@@ -281,6 +368,7 @@ module OpenapiDocument
                 bufferBeforeMinutes: { type: "integer" },
                 bufferAfterMinutes: { type: "integer" },
                 googleBookingCalendarId: { type: %w[string null] },
+                googleBusyCalendarIds: { type: "array", items: { type: "string" } },
                 allowedOrigins: { type: "array", items: { type: "string" } },
                 weeklyAvailability: { type: "array", items: ref("WeeklyAvailabilityEntry") },
                 availabilityOverrides: { type: "array", items: ref("AvailabilityOverrideEntry") },
@@ -308,6 +396,30 @@ module OpenapiDocument
             endTime: { type: %w[string null], example: "17:00" }
           }
         },
+        "GoogleConnection" => {
+          type: "object",
+          description: "Google 連携の状態。refresh token は暗号文も含めて返さない。",
+          properties: {
+            connected: { type: "boolean" },
+            googleAccountEmail: { type: "string", example: "you@example.com" },
+            scopes: { type: "array", items: { type: "string" } },
+            missingScopes: {
+              type: "array", items: { type: "string" },
+              description: "要求したのに同意されなかったスコープ。空でなければ連携をやり直す。"
+            },
+            connectedAt: { type: "string", format: "date-time" }
+          }
+        },
+        "GoogleCalendar" => {
+          type: "object",
+          properties: {
+            id: { type: "string", example: "you@example.com" },
+            summary: { type: "string", example: "メイン" },
+            primary: { type: "boolean" },
+            accessRole: { type: "string", example: "owner" },
+            writable: { type: "boolean", description: "true のものだけ予約の登録先にできる" }
+          }
+        },
         "BookingTypeInput" => {
           type: "object",
           properties: {
@@ -322,6 +434,11 @@ module OpenapiDocument
             bufferAfterMinutes: { type: "integer", example: 0 },
             googleBookingCalendarId: { type: %w[string null],
                                        description: "未指定なら GOOGLE_BOOKING_CALENDAR_ID を使う" },
+            googleBusyCalendarIds: {
+              type: "array", items: { type: "string" },
+              description: "空き判定に使うカレンダー。空配列なら GOOGLE_BUSY_CALENDAR_IDS を使う。" \
+                           "設定画面（/v1/admin/google/setup）から選ぶこともできる。"
+            },
             status: { type: "string", enum: BookingType::STATUSES },
             allowedOrigins: { type: "array", items: { type: "string", example: "https://genba-tsunagu.jp" } },
             weeklyAvailability: { type: "array", items: ref("WeeklyAvailabilityEntry") },

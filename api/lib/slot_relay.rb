@@ -16,8 +16,9 @@ module SlotRelay
 
   Configuration = Struct.new(
     :admin_api_key,
-    :google_service_account_email,
-    :google_service_account_private_key,
+    :google_oauth_client_id,
+    :google_oauth_client_secret,
+    :google_oauth_redirect_uri,
     :google_busy_calendar_ids,
     :google_booking_calendar_id,
     :turnstile_secret_key,
@@ -31,8 +32,17 @@ module SlotRelay
     :reservation_rate_limit_period,
     keyword_init: true
   ) do
-    def google_configured?
-      google_service_account_email.present? && google_service_account_private_key.present?
+    # OAuth クライアント（Google Cloud の「ウェブ アプリケーション」）が設定されているか。
+    # 実際に API を呼べるかは、これに加えて GoogleConnection の連携が要る。
+    def google_oauth_configured?
+      google_oauth_client_id.present? && google_oauth_client_secret.present?
+    end
+
+    # 同意後に Google が戻ってくる URL。Google Cloud 側の「承認済みのリダイレクト URI」と
+    # 完全一致していないと redirect_uri_mismatch になる。
+    def google_oauth_redirect_uri_or_default
+      google_oauth_redirect_uri.presence ||
+        "#{public_base_url.to_s.chomp("/")}/v1/admin/google/oauth/callback"
     end
 
     def turnstile_configured?
@@ -60,8 +70,9 @@ module SlotRelay
     def build_config
       Configuration.new(
         admin_api_key: ENV["ADMIN_API_KEY"].presence,
-        google_service_account_email: ENV["GOOGLE_SERVICE_ACCOUNT_EMAIL"].presence,
-        google_service_account_private_key: normalize_private_key(ENV["GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"]),
+        google_oauth_client_id: ENV["GOOGLE_OAUTH_CLIENT_ID"].presence,
+        google_oauth_client_secret: ENV["GOOGLE_OAUTH_CLIENT_SECRET"].presence,
+        google_oauth_redirect_uri: ENV["GOOGLE_OAUTH_REDIRECT_URI"].presence,
         google_busy_calendar_ids: split_list(ENV["GOOGLE_BUSY_CALENDAR_IDS"]),
         google_booking_calendar_id: ENV["GOOGLE_BOOKING_CALENDAR_ID"].presence,
         turnstile_secret_key: ENV["TURNSTILE_SECRET_KEY"].presence,
@@ -77,8 +88,11 @@ module SlotRelay
     end
 
     # Google Calendar クライアント。テストでは fake を注入する。
+    #
+    # 既定のクライアントはメモ化しない。OAuth の連携／解除は実行中に切り替わるため、
+    # 起動時の状態を握り続けると連携直後に反映されない。
     def calendar_client
-      @calendar_client ||= default_calendar_client
+      @calendar_client || default_calendar_client
     end
 
     attr_writer :calendar_client
@@ -92,25 +106,29 @@ module SlotRelay
     private
 
     def default_calendar_client
-      return GoogleCalendar::Client.new if config.google_configured?
+      return GoogleCalendar::Client.new if google_ready?
 
-      unless Rails.env.local?
-        raise ConfigurationError,
-              "GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY が未設定です"
-      end
+      # 本番で NullClient に落とすと「Busy 時間が空」＝全部空きとして予約を受けてしまう。
+      # 使おうとした時点で 502 になるクライアントを返し、静かな取りこぼしを防ぐ。
+      return GoogleCalendar::UnavailableClient.new(unavailable_reason) unless Rails.env.local?
 
       Rails.logger.warn(
-        "[slot-relay] Google サービスアカウント未設定のため NullClient を使用します" \
-        "（Busy 時間は空・予定は作成されません）"
+        "[slot-relay] Google 未連携のため NullClient を使用します" \
+        "（#{unavailable_reason} / Busy 時間は空・予定は作成されません）"
       )
       GoogleCalendar::NullClient.new
     end
 
-    # Coolify の環境変数では改行が \n という 2 文字で入ることがあるため復元する。
-    def normalize_private_key(raw)
-      return nil if raw.blank?
+    def google_ready?
+      config.google_oauth_configured? && GoogleConnection.connected?
+    end
 
-      raw.gsub('\n', "\n")
+    def unavailable_reason
+      if config.google_oauth_configured?
+        "Google アカウントが未連携です。/v1/admin/google/setup から連携してください"
+      else
+        "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET が未設定です"
+      end
     end
 
     def split_list(raw)

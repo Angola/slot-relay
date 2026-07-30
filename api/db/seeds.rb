@@ -18,7 +18,12 @@ booking_type.update!(
   status: "active"
 )
 
-%w[http://localhost:3000 https://genba-tsunagu.jp].each do |origin|
+# 参照実装 UI のオリジン。compose はポート衝突を避けて 3000 以外で起動することがあるため、
+# DEV_ALLOWED_ORIGINS で上書きできるようにしておく（compose.yaml が渡す）。
+dev_origins = ENV.fetch("DEV_ALLOWED_ORIGINS", "http://localhost:3000")
+                 .split(",").map(&:strip).reject(&:blank?)
+
+(dev_origins + %w[http://localhost:3000 https://genba-tsunagu.jp]).uniq.each do |origin|
   booking_type.origins.find_or_create_by!(origin: origin)
 end
 

@@ -3,8 +3,16 @@
 # Google Calendar クライアントのテスト用差し替え。
 # 実 API を叩かずに「Busy 時間がある」「作成に失敗する」状況を作れるようにする。
 class FakeCalendarClient
+  DEFAULT_CALENDARS = [
+    { id: "owner@example.com", summary: "メイン", primary: true, access_role: "owner" },
+    { id: "booking@example.com", summary: "予約用", primary: false, access_role: "owner" },
+    { id: "busy@example.com", summary: "個人", primary: false, access_role: "writer" },
+    { id: "holiday@example.com", summary: "祝日", primary: false, access_role: "reader" }
+  ].freeze
+
   attr_reader :created_events, :deleted_events, :freebusy_queries
-  attr_accessor :busy_periods_by_calendar, :raise_on_busy, :raise_on_create, :raise_on_delete
+  attr_accessor :busy_periods_by_calendar, :raise_on_busy, :raise_on_create, :raise_on_delete,
+                :raise_on_calendars, :calendar_entries
 
   def initialize(busy: {})
     @busy_periods_by_calendar = busy
@@ -14,6 +22,14 @@ class FakeCalendarClient
     @raise_on_busy = false
     @raise_on_create = false
     @raise_on_delete = false
+    @raise_on_calendars = false
+    @calendar_entries = DEFAULT_CALENDARS.map { |attrs| GoogleCalendar::Client::CalendarEntry.new(**attrs) }
+  end
+
+  def calendars
+    raise GoogleCalendar::Client::Error, "カレンダー一覧の取得に失敗（テスト）" if raise_on_calendars
+
+    calendar_entries
   end
 
   # @param busy [Array<Array(Time, Time)>] Busy 区間
