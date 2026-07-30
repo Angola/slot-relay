@@ -10,6 +10,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `docs/DEPLOY.md` の Coolify 設定が誤っていたのを直した。
+  **Dockerfile Location は Base Directory からの相対パス**なので `/Dockerfile` が正しい。
+  `/api/Dockerfile` と書くと `api/api/Dockerfile` を探しに行き、
+  `failed to build: resolve : lstat .../api/api: no such file or directory` で落ちる。
+  あわせて、public リポジトリなので Coolify のソースは HTTPS（Public Repository）を
+  選ぶこと（SSH だと Deploy key 未登録で `Permission denied (publickey)` になる）と、
+  `api/Dockerfile.dev` を指定しないことを追記した。
+
 ## [0.3.2] - 2026-07-30
 
 ### Changed
