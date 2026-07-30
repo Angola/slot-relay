@@ -94,7 +94,7 @@ module SlotRelay
         api_docs_enabled: Rails.env.local? || ENV["ENABLE_API_DOCS"] == "true",
         admin_notification_email: ENV["ADMIN_NOTIFICATION_EMAIL"].presence,
         mail_from: ENV["SMTP_FROM"].presence || "info@genba-tsunagu.jp",
-        public_base_url: ENV["PUBLIC_BASE_URL"].presence || "https://booking-api.genba-tsunagu.jp",
+        public_base_url: ENV["PUBLIC_BASE_URL"].presence || "https://booking-api.stagehubs.net",
         cancel_url_base: ENV["CANCEL_URL_BASE"].presence,
         public_rate_limit_per_ip: ENV.fetch("PUBLIC_RATE_LIMIT_PER_IP", "120").to_i,
         public_rate_limit_period: ENV.fetch("PUBLIC_RATE_LIMIT_PERIOD", "60").to_i,

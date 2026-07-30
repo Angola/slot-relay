@@ -118,7 +118,7 @@ GET /health  /ready  /openapi.json  /docs
 Google の認証情報や管理 API キーはサイト側に置かない。
 
 ```
-NEXT_PUBLIC_BOOKING_API_URL=https://booking-api.genba-tsunagu.jp
+NEXT_PUBLIC_BOOKING_API_URL=https://booking-api.stagehubs.net
 NEXT_PUBLIC_BOOKING_TYPE=genba-tsunagu-consultation
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 ```
