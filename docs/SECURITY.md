@@ -21,7 +21,8 @@
 
 | 懸念 | 対策方針 | 状況 |
 |---|---|---|
-| Bot による自動予約 | 予約 POST に Cloudflare Turnstile を必須化。Cloudflare 側の障害時は fail closed（弾く）。ただし**既存 Idempotency-Key の再送は Turnstile を再検証しない**（トークンが単回使用のため。新しい予約は作られないので Bot 対策は迂回されない） | 対応済み（本番で `TURNSTILE_SECRET_KEY` の設定が必要） |
+| Bot による自動予約 | 予約 POST に Cloudflare Turnstile を必須化。Cloudflare 側の障害時は fail closed（弾く）。ただし**既存 Idempotency-Key の再送は Turnstile を再検証しない**（トークンが単回使用のため。新しい予約は作られないので Bot 対策は迂回されない） | 対応済み |
+| **Turnstile の設定漏れで Bot 対策が無効になる** | `TurnstileVerifier` は未設定なら素通しするため、本番で入れ忘れると予約 POST の防御がレートリミットだけになり、IP を変えればダミー予約でカレンダーを埋められる。**本番では未設定なら予約 POST を 503** にして、設定漏れを黙って許さない（管理 API キー未設定で 503 にするのと同じ考え方） | 対応済み |
 | 空き枠 API の総なめ・大量リクエスト | rack-attack で IP 単位のレートリミット（公開 120req/60s、予約 POST・キャンセル 5req/600s、管理 60req/60s）。429 に `Retry-After` を付ける | 対応済み |
 | 再送・多重送信による二重予約 | `Idempotency-Key` を必須化。同一キーは先着の予約を返す（`(booking_type_id, idempotency_key)` に部分一意インデックス） | 対応済み |
 | 同時リクエストによる二重予約 | DB の `EXCLUDE USING gist` で有効な予約（pending/confirmed）の重なりを禁止。スコープは**登録先 Google カレンダー単位**（予約メニュー単位だと同じカレンダーを共有する別メニューがすり抜ける）。実スレッドでの同時実行テストあり | 対応済み |
@@ -65,6 +66,7 @@
 | **refresh token の DB 流出** | 平文で保存しない。`SECRET_KEY_BASE` から `key_generator` で導出した鍵の `ActiveSupport::MessageEncryptor` で暗号化して保存する。API 応答・設定画面には暗号文も含めて出さない（テストで検証） | 対応済み |
 | refresh token の暗号鍵の管理 | `SECRET_KEY_BASE` に相乗りしている。ActiveRecord Encryption を使うと production 必須の環境変数が 3 本増えるため（`docs/plans/2026-07-30-google-oauth-calendar-selection.md`）。**`SECRET_KEY_BASE` を回すと復号できなくなり、Google の再連携が必要**。復号失敗時は例外にせず「未連携」として扱い、502 で気づけるようにしている | 対応済み（運用注意） |
 | API 仕様書からの秘密情報の漏洩 | `/openapi.json` に管理キー・秘密鍵・SMTP 情報を含めない（テストで検証） | 対応済み |
+| API 仕様書からの攻撃面の偵察 | **本番では `/docs` と `/openapi.json` を既定で 404**（403 だと存在が分かるため 404）。管理 API のパス構成、とくに誰でも開ける `/v1/admin/google/setup` をスキャナに拾わせない。公開したいときだけ `ENABLE_API_DOCS=true`。`noindex, nofollow` と `no-referrer` も付ける | 対応済み |
 | CI からの漏洩 | GitHub Secrets を使用。ログへのエコー禁止。CI では実シークレットを使わない | 運用ルール化 |
 | Docker イメージへのシークレット同梱 | `.dockerignore` で `.env` を除外。秘密は実行時の環境変数のみ | 対応済み |
 | Rails 暗号化 credentials の鍵管理 | 暗号化 credentials は使わない（`credentials.yml.enc` / `master.key` を置かない）。秘密は環境変数に一本化し、production では `SECRET_KEY_BASE` を設定する | 対応済み |

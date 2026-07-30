@@ -207,6 +207,41 @@ module Reservations
       end
     end
 
+    # 本番で TURNSTILE_SECRET_KEY を入れ忘れると Bot 検証が素通しになり、予約 POST の
+    # 防御がレートリミットだけになる。設定漏れを黙って許さないこと。
+    test "Turnstile が必須なのに未設定なら予約を受け付けない" do
+      configure_slot_relay!(require_turnstile: true, turnstile_secret_key: nil)
+
+      freeze_base_time do
+        result = create(params: reservation_params.merge(turnstile_token: "token"))
+
+        assert_predicate result, :failure?
+        assert_equal :configuration_error, result.code
+        assert_equal 0, Reservation.count
+      end
+    end
+
+    test "Turnstile が必須で設定済みなら通常どおり予約できる" do
+      configure_slot_relay!(require_turnstile: true, turnstile_secret_key: "secret")
+      stub_turnstile(success: true)
+
+      freeze_base_time do
+        result = create(params: reservation_params.merge(turnstile_token: "token"))
+
+        assert_predicate result, :success?
+        assert_predicate result.value, :confirmed?
+      end
+    end
+
+    # ローカル開発では未設定でも動かせる（今までの挙動）。
+    test "Turnstile が必須でなければ未設定でも予約できる" do
+      configure_slot_relay!(require_turnstile: false, turnstile_secret_key: nil)
+
+      freeze_base_time do
+        assert_predicate create, :success?
+      end
+    end
+
     # Turnstile のトークンは 1 回しか検証できない。応答を取りこぼしたクライアントが
     # 同じキー・同じトークンで再送したとき、TURNSTILE_FAILED ではなく既存予約が返ること。
     test "同じ Idempotency-Key の再送は Turnstile を再検証せず既存予約を返す" do

@@ -10,6 +10,26 @@
 
 ## [Unreleased]
 
+### Security
+
+- **本番で `TURNSTILE_SECRET_KEY` が未設定なら予約 POST を 503 にした。**
+  `TurnstileVerifier` は未設定だと素通しするため、設定漏れのまま公開すると
+  予約 POST の防御がレートリミットだけになり、IP を変えればダミー予約で
+  カレンダーを埋められた。管理 API キー未設定で 503 にするのと同じ考え方に揃えた。
+  development / test は従来どおり未設定でも動く。
+- **本番では `/docs` と `/openapi.json` を既定で 404 にした。**
+  秘密情報は含まないが、管理 API のパス構成（とくに誰でも開ける
+  `/v1/admin/google/setup`）を偵察させないため。403 ではなく 404 にして存在も伏せる。
+  公開したいときは `ENABLE_API_DOCS=true`。Swagger UI に `noindex, nofollow` と
+  `no-referrer` も付けた。
+  経緯は `docs/plans/2026-07-30-harden-production-defaults.md`。
+
+### Changed
+
+- 起動時の設定チェックは従来どおり警告にとどめ、拒否は各エンドポイントで行う方針を維持した
+  （起動を落とすと Google 連携の初回セットアップに到達できず、
+  Coolify のヘルスチェックでロールバックループになるため）。
+
 ## [0.3.0] - 2026-07-30
 
 ### Changed

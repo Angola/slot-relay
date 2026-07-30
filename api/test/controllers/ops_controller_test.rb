@@ -66,6 +66,42 @@ class OpsControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "/openapi.json"
   end
 
+  test "/docs は検索エンジンに拾わせない" do
+    get "/docs"
+
+    assert_includes response.body, %(name="robots" content="noindex, nofollow")
+  end
+
+  # 本番では既定で閉じる。管理 API のパス構成を偵察させないため（docs/SECURITY.md）。
+  # 403 ではなく 404 にして「ここに何かある」ことも伝えない。
+  test "ドキュメントが無効なら /docs は 404" do
+    configure_slot_relay!(api_docs_enabled: false)
+
+    get "/docs"
+
+    assert_response :not_found
+    assert_not_includes response.body, "swagger-ui"
+  end
+
+  test "ドキュメントが無効なら /openapi.json も 404" do
+    configure_slot_relay!(api_docs_enabled: false)
+
+    get "/openapi.json"
+
+    assert_response :not_found
+    assert_not_includes response.body, "/v1/admin"
+  end
+
+  test "ドキュメントが無効でも /health と /ready は開いている（ヘルスチェック用）" do
+    configure_slot_relay!(api_docs_enabled: false)
+
+    get "/health"
+    assert_response :success
+
+    get "/ready"
+    assert_response :success
+  end
+
   private
 
   def collect_refs(node)

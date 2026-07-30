@@ -43,6 +43,13 @@ module Reservations
 
       return failure(:invalid_start_at, "startAt の形式が正しくありません") if start_at.nil?
 
+      # 本番で TURNSTILE_SECRET_KEY を入れ忘れると、TurnstileVerifier が素通しになり
+      # 予約 POST の防御がレートリミットだけになる。設定漏れを黙って許さず 503 にする。
+      if SlotRelay.config.turnstile_missing?
+        Rails.logger.error("[slot-relay] TURNSTILE_SECRET_KEY が未設定のため予約を受け付けません")
+        return failure(:configuration_error, "予約機能が構成されていません。管理者にお問い合わせください。")
+      end
+
       unless turnstile.verify(params[:turnstile_token], remote_ip:)
         return failure(:turnstile_failed, "Bot 判定に失敗しました。ページを再読み込みしてお試しください。")
       end

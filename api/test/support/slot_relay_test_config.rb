@@ -20,6 +20,9 @@ module SlotRelayTestConfig
         google_busy_calendar_ids: [BUSY_CALENDAR_ID],
         google_booking_calendar_id: BOOKING_CALENDAR_ID,
         turnstile_secret_key: nil, # 既定では Turnstile 検証をスキップ
+        # 本番の「未設定なら 503」を検証するテストだけ true にする
+        require_turnstile: false,
+        api_docs_enabled: true,
         admin_notification_email: "admin@example.com",
         mail_from: "info@example.com",
         public_base_url: "https://booking-api.example.com",
