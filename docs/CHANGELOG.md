@@ -10,6 +10,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`docs/INTEGRATION.md` を新設**。予約フォームを実装するサイト側の担当者に
+  URL を 1 本渡せば伝わるようにした。経緯は `docs/plans/2026-07-31-integration-guide.md`。
+  - 受け取る 3 つの値と、**受け取らない値**（管理 API キー・Turnstile の Secret Key・
+    Google の認証情報）の線引き
+  - 3 リクエストの流れと `curl` 例、`Idempotency-Key` の発行規則
+  - エラーコード一覧と画面での出し分け（とくに 409 `SLOT_UNAVAILABLE` の扱い）
+  - 連携前に運用者がやること（許可 Origin の登録）と、詰まったときの切り分け表
+  - 記載した挙動（期間の上限 62 日・両端を含む・各エラーコード）は実機で確認済み
+- README / CLAUDE.md / DESIGN.md / DEPLOY.md / web/README.md から
+  `INTEGRATION.md` への導線を張った。
+
 ## [0.3.3] - 2026-07-30
 
 ### Fixed

@@ -2,6 +2,10 @@
 
 Next.js 15（App Router）+ React 19 + TypeScript。
 
+> **自分のサイトに予約フォームを実装する人は、まず
+> [`docs/INTEGRATION.md`](../docs/INTEGRATION.md) を読んでください。**
+> ここは「そのお手本のコード」です。
+
 **これは本番デプロイ対象ではない。** 予約 API の公開エンドポイントだけで予約画面が成立することを示し、
 画面遷移をテストで固定するために置いている。実際の予約画面は各サイト（genba-tsunagu.jp など）が
 自前のデザインで実装し、同じ API を呼ぶ（[`docs/DESIGN.md §2.1`](../docs/DESIGN.md)）。

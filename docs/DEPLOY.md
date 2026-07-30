@@ -221,6 +221,16 @@ NEXT_PUBLIC_TURNSTILE_SITE_KEY=...
 
 実装は `web/`（`lib/bookingApi.ts` と `components/BookingForm.tsx`）をそのまま参考にできる。
 
+**サイト側の実装者には [`INTEGRATION.md`](INTEGRATION.md) を渡す。**
+上の 3 つの値に加えて、**サイトのオリジンを許可 Origin に登録**しておくこと
+（漏れると相手のリクエストが全部 403 になる）。
+
+```bash
+curl -X PATCH https://booking-api.stagehubs.net/v1/admin/booking-types/1 \
+  -H "X-Admin-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"allowedOrigins": ["https://genba-tsunagu.jp"]}'
+```
+
 ## デプロイ手順
 
 1. 作業ブランチから `main` へ PR を出し、**スカッシュマージ**する
