@@ -31,14 +31,20 @@ module Reservations
     # @return [ServiceResult] 成功時 value は Reservation
     def call
       return failure(:validation_failed, "Idempotency-Key ヘッダは必須です") if idempotency_key.blank?
+
+      # Idempotency-Key の照会は Turnstile 検証より**前**に行う。
+      # Turnstile のトークンは 1 回しか検証できないため、応答を取りこぼした
+      # クライアントが同じキー・同じトークンで再送すると、既存予約を返すべき場面で
+      # TURNSTILE_FAILED になり、Idempotency-Key の意味が失われる。
+      # 既存予約の再送は「新しい予約試行」ではないので Bot 判定をやり直す必要もない。
+      if (existing = find_by_idempotency_key)
+        return replay(existing)
+      end
+
       return failure(:invalid_start_at, "startAt の形式が正しくありません") if start_at.nil?
 
       unless turnstile.verify(params[:turnstile_token], remote_ip:)
         return failure(:turnstile_failed, "Bot 判定に失敗しました。ページを再読み込みしてお試しください。")
-      end
-
-      if (existing = find_by_idempotency_key)
-        return replay(existing)
       end
 
       reservation = hold_slot

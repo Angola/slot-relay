@@ -64,7 +64,7 @@ API 仕様は http://localhost:3001/docs（Swagger UI）で確認できる。
 ## テスト
 
 ```bash
-cd api && bin/rails test    # 165 件
+cd api && bin/rails test    # 176 件
 cd web && npm test          # 15 件
 ```
 

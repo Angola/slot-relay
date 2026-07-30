@@ -124,13 +124,70 @@ class ReservationTest < ActiveSupport::TestCase
     end
   end
 
-  test "予約メニューが違えば同じ時間でも作れる" do
-    other = create_booking_type(slug: "other-consultation")
+  test "登録先カレンダーが違えば別メニューで同じ時間を予約できる" do
+    other = create_booking_type(slug: "other-consultation", google_booking_calendar_id: "other@example.com")
     create_confirmed_reservation(booking_type: @booking_type, start_at: @start_at)
 
     assert_nothing_raised do
       create_confirmed_reservation(booking_type: other, start_at: @start_at)
     end
+  end
+
+  # 排他制約を booking_type_id ではなく booking_calendar_id でスコープしていることの回帰テスト。
+  # 予約メニューは既定で同じ登録先カレンダーを共有するため、メニュー単位のスコープだと
+  # 「別メニュー・同じカレンダー・同じ時刻」がすり抜けて 1 つのカレンダーが二重予約になる。
+  test "登録先カレンダーが同じなら別メニューでも同じ時間は予約できない" do
+    other = create_booking_type(slug: "other-consultation")
+    assert_equal @booking_type.booking_calendar_id, other.booking_calendar_id
+
+    create_confirmed_reservation(booking_type: @booking_type, start_at: @start_at)
+
+    error = assert_raises(ActiveRecord::StatementInvalid) do
+      create_confirmed_reservation(booking_type: other, start_at: @start_at, guest_email: "b@example.com")
+    end
+
+    assert_kind_of PG::ExclusionViolation, error.cause
+  end
+
+  test "登録先カレンダーが同じなら別メニューの pending も枠を塞ぐ" do
+    other = create_booking_type(slug: "other-consultation")
+
+    freeze_base_time do
+      other.reservations.create!(
+        start_at: @start_at, end_at: @start_at + 1.hour,
+        guest_name: "別メニューの仮確保", guest_email: "a@example.com",
+        status: "pending", expires_at: 3.minutes.from_now
+      )
+
+      calculator = AvailabilityCalculator.new(
+        booking_type: @booking_type, from: BookingFactories::MONDAY, to: BookingFactories::MONDAY,
+        calendar_client: FakeCalendarClient.new
+      )
+
+      assert_not calculator.slot_available?(@start_at)
+    end
+  end
+
+  test "登録先カレンダーは予約時点の値で固定される" do
+    reservation = create_confirmed_reservation(booking_type: @booking_type, start_at: @start_at)
+    assert_equal SlotRelayTestConfig::BOOKING_CALENDAR_ID, reservation.booking_calendar_id
+
+    @booking_type.update!(google_booking_calendar_id: "moved@example.com")
+
+    assert_equal SlotRelayTestConfig::BOOKING_CALENDAR_ID, reservation.reload.booking_calendar_id
+  end
+
+  test "登録先カレンダーが決まらない予約は作れない" do
+    booking_type = create_booking_type(slug: "no-calendar", google_booking_calendar_id: nil)
+    configure_slot_relay!(google_booking_calendar_id: nil)
+
+    reservation = booking_type.reservations.new(
+      start_at: @start_at, end_at: @start_at + 1.hour,
+      guest_name: "山田太郎", guest_email: "taro@example.com"
+    )
+
+    assert_predicate reservation, :invalid?
+    assert_predicate reservation.errors[:booking_calendar_id], :any?
   end
 
   private

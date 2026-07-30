@@ -21,10 +21,11 @@
 
 | 懸念 | 対策方針 | 状況 |
 |---|---|---|
-| Bot による自動予約 | 予約 POST に Cloudflare Turnstile を必須化。Cloudflare 側の障害時は fail closed（弾く） | 対応済み（本番で `TURNSTILE_SECRET_KEY` の設定が必要） |
+| Bot による自動予約 | 予約 POST に Cloudflare Turnstile を必須化。Cloudflare 側の障害時は fail closed（弾く）。ただし**既存 Idempotency-Key の再送は Turnstile を再検証しない**（トークンが単回使用のため。新しい予約は作られないので Bot 対策は迂回されない） | 対応済み（本番で `TURNSTILE_SECRET_KEY` の設定が必要） |
 | 空き枠 API の総なめ・大量リクエスト | rack-attack で IP 単位のレートリミット（公開 120req/60s、予約 POST・キャンセル 5req/600s、管理 60req/60s）。429 に `Retry-After` を付ける | 対応済み |
 | 再送・多重送信による二重予約 | `Idempotency-Key` を必須化。同一キーは先着の予約を返す（`(booking_type_id, idempotency_key)` に部分一意インデックス） | 対応済み |
-| 同時リクエストによる二重予約 | DB の `EXCLUDE USING gist` で有効な予約（pending/confirmed）の重なりを禁止。実スレッドでの同時実行テストあり | 対応済み |
+| 同時リクエストによる二重予約 | DB の `EXCLUDE USING gist` で有効な予約（pending/confirmed）の重なりを禁止。スコープは**登録先 Google カレンダー単位**（予約メニュー単位だと同じカレンダーを共有する別メニューがすり抜ける）。実スレッドでの同時実行テストあり | 対応済み |
+| Idempotency-Key の推測による他人の予約情報の閲覧 | 同じキーの再送には作成済み予約（氏名・メール等を含む）を返すため、キーは実質ベアラトークン。クライアントは暗号論的乱数で生成する（参照実装は `crypto.randomUUID` / `getRandomValues`）。加えて予約 POST のレートリミット（既定 5req/600s）が総当たりを抑える | 一部対応（キーの品質はクライアント側の責任） |
 | パラメータ汚染（配列・オブジェクトを文字列カラムへ） | 公開 API はマスアサインメントせず、`String` 以外を `nil` に落としてから検証する | 対応済み |
 | 巨大 JSON（`answers`）でのリソース消費 | キー数 30・値 2000 文字・コレクション要素 200 の上限を検証 | 対応済み |
 | 空き枠取得の期間指定による重い処理 | 1 リクエスト最大 62 日（`AvailabilityCalculator::MAX_RANGE_DAYS`）。超過は 400 | 対応済み |

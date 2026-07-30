@@ -113,14 +113,18 @@ class AvailabilityCalculator
     weekly_by_day[date.wday].to_a.map { |wa| [wa.start_minutes, wa.end_minutes] }
   end
 
+  # 枠の開始時刻は「その日の壁時計時刻」として組み立てる。
+  # 深夜 0 時に経過分数を足すと、サマータイムのある地域で設定どおりの時刻にならない
+  # （春の切り替え日は 1 時間分の欠落が経過時間に含まれ、10:00 設定が 11:00 になる）。
+  # 終了時刻は「開始から所要時間ぶんの経過時間」なので、こちらは加算でよい。
   def slots_in_window(date, window)
     start_minutes, end_minutes = window
-    day_start = tz.local(date.year, date.month, date.day)
     duration = booking_type.duration_minutes
 
     offsets = (start_minutes...end_minutes).step(duration).select { |offset| offset + duration <= end_minutes }
     offsets.map do |offset|
-      Slot.new(start_at: day_start + offset.minutes, end_at: day_start + (offset + duration).minutes)
+      start_at = tz.local(date.year, date.month, date.day, offset / 60, offset % 60)
+      Slot.new(start_at: start_at, end_at: start_at + duration.minutes)
     end
   end
 
@@ -158,8 +162,13 @@ class AvailabilityCalculator
     (SlotRelay.config.google_busy_calendar_ids + [booking_type.booking_calendar_id]).compact_blank.uniq
   end
 
+  # DB 上の有効な予約。**予約メニュー単位ではなく登録先カレンダー単位**で引く。
+  # 複数の予約メニューは既定で同じカレンダーを共有するため、メニュー単位で見ると
+  # 「別メニュー・同じカレンダー」の予約を空きとして返してしまう。
   def reservation_busy(window_start, window_end)
-    scope = booking_type.reservations.blocking(now).overlapping(window_start, window_end)
+    scope = Reservation.for_calendar(booking_type.booking_calendar_id)
+                       .blocking(now)
+                       .overlapping(window_start, window_end)
     scope = scope.where.not(id: exclude_reservation_id) if exclude_reservation_id
     scope.pluck(:start_at, :end_at)
   end

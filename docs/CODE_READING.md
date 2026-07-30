@@ -103,7 +103,7 @@ slot-relay/
 テストの実行:
 
 ```bash
-cd api && bin/rails test        # Rails（165 件）
+cd api && bin/rails test        # Rails（176 件）
 cd web && npm test              # Next.js（15 件）
 ```
 

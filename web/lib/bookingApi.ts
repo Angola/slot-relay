@@ -135,11 +135,22 @@ export function cancelReservation(token: string): Promise<Reservation> {
   });
 }
 
-/** Idempotency-Key。crypto.randomUUID が無い環境（古い Safari 等）にも備える */
+/**
+ * Idempotency-Key。
+ *
+ * このキーは「予約作成の応答を再取得できる合言葉」として働く（同じキーで再送すると
+ * 作成済みの予約が返る）ため、推測されない値でなければならない。必ず暗号論的乱数から作る。
+ * crypto.randomUUID が無い環境（古い Safari 等）では getRandomValues にフォールバックする。
+ */
 export function newIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (typeof crypto === "undefined") {
+    throw new Error("crypto API が利用できないため予約キーを生成できません（HTTPS で開いてください）");
+  }
+
+  if (typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
 
-  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

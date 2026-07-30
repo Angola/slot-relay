@@ -26,6 +26,9 @@ class Reservation < ApplicationRecord
   attr_accessor :cancel_token
 
   validates :public_id, presence: true, uniqueness: true
+  # 排他制約のスコープになる列なので、空のまま作らせない（空だと直列化が効かない）
+  validates :booking_calendar_id,
+            presence: { message: "が未設定です。予約メニューまたは GOOGLE_BOOKING_CALENDAR_ID を設定してください" }
   validates :start_at, :end_at, presence: true
   validates :guest_name, presence: true, length: { maximum: 120 }
   validates :guest_email, presence: true, length: { maximum: 255 }, format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -51,7 +54,11 @@ class Reservation < ApplicationRecord
     where("start_at < ? AND end_at > ?", end_at, start_at)
   }
 
+  # 同じ Google カレンダーへ登録される予約。予約メニューをまたいで引く。
+  scope :for_calendar, ->(calendar_id) { where(booking_calendar_id: calendar_id) }
+
   before_validation :assign_public_id, on: :create
+  before_validation :assign_booking_calendar_id, on: :create
 
   class << self
     def generate_public_id
@@ -97,6 +104,12 @@ class Reservation < ApplicationRecord
 
   def assign_public_id
     self.public_id ||= self.class.generate_public_id
+  end
+
+  # 予約時点の登録先カレンダーを固定する。あとで予約メニュー側の設定を変えても、
+  # 既存予約が属する直列化の範囲（排他制約のスコープ）が動かないようにするため。
+  def assign_booking_calendar_id
+    self.booking_calendar_id ||= booking_type&.booking_calendar_id
   end
 
   def end_at_after_start_at

@@ -207,6 +207,46 @@ module Reservations
       end
     end
 
+    # Turnstile のトークンは 1 回しか検証できない。応答を取りこぼしたクライアントが
+    # 同じキー・同じトークンで再送したとき、TURNSTILE_FAILED ではなく既存予約が返ること。
+    test "同じ Idempotency-Key の再送は Turnstile を再検証せず既存予約を返す" do
+      configure_slot_relay!(turnstile_secret_key: "secret")
+      stub_turnstile(success: true)
+
+      freeze_base_time do
+        first = create(idempotency_key: "key-1", params: reservation_params.merge(turnstile_token: "token"))
+        assert_predicate first, :success?
+
+        # 2 回目の siteverify は timeout-or-duplicate で失敗する
+        stub_turnstile(success: false)
+
+        second = create(idempotency_key: "key-1", params: reservation_params.merge(turnstile_token: "token"))
+
+        assert_predicate second, :success?
+        assert_equal first.value.id, second.value.id
+        assert_equal 1, Reservation.count
+      end
+    end
+
+    test "同じ枠の別メニューが先に押さえていたら 409（登録先カレンダーが同じ場合）" do
+      other = create_booking_type(slug: "other-menu")
+
+      freeze_base_time do
+        create_confirmed_reservation(booking_type: other, start_at: @start_at, guest_email: "other@example.com")
+
+        result = create
+
+        assert_predicate result, :failure?
+        assert_equal :slot_unavailable, result.code
+      end
+    end
+
+    test "予約には登録先カレンダーが記録される" do
+      freeze_base_time do
+        assert_equal SlotRelayTestConfig::BOOKING_CALENDAR_ID, create.value.booking_calendar_id
+      end
+    end
+
     test "Turnstile の検証が通れば予約できる" do
       configure_slot_relay!(turnstile_secret_key: "secret")
       stub_turnstile(success: true)

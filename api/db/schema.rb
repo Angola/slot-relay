@@ -56,6 +56,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_30_000006) do
 
   create_table "reservations", force: :cascade do |t|
     t.jsonb "answers", default: {}, null: false
+    t.string "booking_calendar_id", null: false
     t.bigint "booking_type_id", null: false
     t.string "cancel_token_hash"
     t.datetime "cancelled_at"
@@ -72,6 +73,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_30_000006) do
     t.datetime "start_at", null: false
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.index ["booking_calendar_id", "start_at"], name: "index_reservations_on_booking_calendar_id_and_start_at"
     t.index ["booking_type_id", "idempotency_key"], name: "index_reservations_on_booking_type_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["booking_type_id", "start_at"], name: "index_reservations_on_booking_type_id_and_start_at"
     t.index ["booking_type_id"], name: "index_reservations_on_booking_type_id"
@@ -79,7 +81,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_30_000006) do
     t.index ["public_id"], name: "index_reservations_on_public_id", unique: true
     t.index ["status"], name: "index_reservations_on_status"
     t.check_constraint "start_at < end_at", name: "reservations_time_order"
-    t.exclusion_constraint "booking_type_id WITH =, tstzrange(start_at, end_at, '[)'::text) WITH &&", where: "(status)::text = ANY ((ARRAY['pending'::character varying, 'confirmed'::character varying])::text[])", using: :gist, name: "reservations_active_overlap_exclude"
+    t.exclusion_constraint "booking_calendar_id WITH =, tstzrange(start_at, end_at, '[)'::text) WITH &&", where: "(status)::text = ANY ((ARRAY['pending'::character varying, 'confirmed'::character varying])::text[])", using: :gist, name: "reservations_active_overlap_exclude"
   end
 
   create_table "weekly_availabilities", force: :cascade do |t|

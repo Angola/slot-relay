@@ -12,6 +12,9 @@ booking_type.update!(
   time_zone: "Asia/Tokyo",
   minimum_notice_minutes: 1_440,
   booking_window_days: 30,
+  # 予約は登録先カレンダーごとに直列化される（排他制約のスコープ）。
+  # ローカルでは Google に繋がないが、値は必須なのでプレースホルダを入れる。
+  google_booking_calendar_id: ENV.fetch("GOOGLE_BOOKING_CALENDAR_ID", "local-dev-booking-calendar"),
   status: "active"
 )
 

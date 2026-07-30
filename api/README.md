@@ -18,7 +18,7 @@ Busy 時間は空・予定は作成されない。本番で未設定だと起動
 ## テスト
 
 ```bash
-bin/rails test              # 全 165 件
+bin/rails test              # 全 176 件
 bin/rails test test/services/availability_calculator_test.rb
 bin/ci                      # setup + 依存監査 + テスト + seed
 ```

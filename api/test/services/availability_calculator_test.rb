@@ -269,6 +269,64 @@ class AvailabilityCalculatorTest < ActiveSupport::TestCase
     end
   end
 
+  # 深夜 0 時に経過分数を足す実装だと、サマータイム切り替え日に設定した壁時計時刻から
+  # ずれる（春の切り替え日は 1 時間ぶん後ろへ、秋は前へ）。その回帰テスト。
+  test "サマータイム切り替え日でも設定どおりの壁時計時刻で枠を作る" do
+    booking_type = create_booking_type(
+      slug: "los-angeles", time_zone: "America/Los_Angeles", minimum_notice_minutes: 0,
+      weekly: [{ day_of_week: 0, start_time: "10:00", end_time: "13:00" }]
+    )
+    tz = ActiveSupport::TimeZone["America/Los_Angeles"]
+    spring_forward = Date.new(2026, 3, 8) # 02:00 → 03:00 に飛ぶ日曜
+
+    travel_to tz.local(2026, 3, 1, 9, 0) do
+      slots = AvailabilityCalculator.new(
+        booking_type: booking_type, from: spring_forward, to: spring_forward, calendar_client: fake_calendar
+      ).call.first.slots
+
+      assert_equal ["10:00", "11:00", "12:00"], slots.map { |slot| slot.start_at.in_time_zone(tz).strftime("%H:%M") }
+      # 所要時間は経過時間として扱う（60 分の面談は実時間で 60 分）
+      assert_equal 60 * 60, (slots.first.end_at - slots.first.start_at).to_i
+    end
+  end
+
+  test "秋のサマータイム終了日でも設定どおりの壁時計時刻で枠を作る" do
+    booking_type = create_booking_type(
+      slug: "los-angeles-fall", time_zone: "America/Los_Angeles", minimum_notice_minutes: 0,
+      weekly: [{ day_of_week: 0, start_time: "10:00", end_time: "12:00" }]
+    )
+    tz = ActiveSupport::TimeZone["America/Los_Angeles"]
+    fall_back = Date.new(2026, 11, 1) # 02:00 → 01:00 に戻る日曜
+
+    travel_to tz.local(2026, 10, 25, 9, 0) do
+      slots = AvailabilityCalculator.new(
+        booking_type: booking_type, from: fall_back, to: fall_back, calendar_client: fake_calendar
+      ).call.first.slots
+
+      assert_equal ["10:00", "11:00"], slots.map { |slot| slot.start_at.in_time_zone(tz).strftime("%H:%M") }
+    end
+  end
+
+  test "同じ登録先カレンダーを使う別メニューの予約も枠を塞ぐ" do
+    other = create_booking_type(slug: "other-menu") # 同じ BOOKING_CALENDAR_ID を共有
+
+    freeze_base_time do
+      create_confirmed_reservation(booking_type: other, start_at: jst(MONDAY, "15:00"))
+
+      assert_not_includes slots_on(MONDAY).map(&:start_at), jst(MONDAY, "15:00")
+    end
+  end
+
+  test "登録先カレンダーが違う別メニューの予約は枠を塞がない" do
+    other = create_booking_type(slug: "other-menu-2", google_booking_calendar_id: "other@example.com")
+
+    freeze_base_time do
+      create_confirmed_reservation(booking_type: other, start_at: jst(MONDAY, "15:00"))
+
+      assert_includes slots_on(MONDAY).map(&:start_at), jst(MONDAY, "15:00")
+    end
+  end
+
   test "Busy 時間を取得できない場合は例外を伝播させる（空き扱いにしない）" do
     fake_calendar.raise_on_busy = true
 

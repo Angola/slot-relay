@@ -136,6 +136,10 @@ API ドメインは独立させ、genba-tsunagu.jp のデプロイと分離す�
 補足:
 
 - **枠が 0 件の日も `slots: []` で返す。** カレンダー UI が「予約できない日」を描画できるようにするため。
+- **枠の開始時刻は「その日の壁時計時刻」として組み立てる。** 深夜 0 時に経過分数を足すと、
+  サマータイムのある地域で設定どおりの時刻にならない（春の切り替え日は 10:00 設定が 11:00 になる）。
+  終了時刻は「開始から所要時間ぶんの経過時間」なので加算でよい（60 分の面談は実時間で 60 分）。
+- **有効な予約の除外は「登録先カレンダー単位」**で行う（予約メニュー単位ではない）。理由は §3.3。
 - **1 リクエストの上限は 62 日**（`AvailabilityCalculator::MAX_RANGE_DAYS`）。超えると 400 `INVALID_RANGE`。
 - **空き判定には予約の登録先カレンダーも含める。** Google 側で直接入れた予定や、
   他メニュー経由の予約で枠が二重に埋まらないようにするため。
@@ -169,15 +173,26 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 ALTER TABLE reservations
 ADD CONSTRAINT reservations_active_overlap_exclude
 EXCLUDE USING gist (
-  booking_type_id WITH =,
+  booking_calendar_id WITH =,
   tstzrange(start_at, end_at, '[)') WITH &&
 )
 WHERE (status IN ('pending', 'confirmed'));
 ```
 
 - 範囲は `[)`（終了時刻＝次の開始時刻は重なりとみなさない）。
+- **スコープは予約メニューではなく「登録先 Google カレンダー」。** 予約メニューは既定で
+  同じ `GOOGLE_BOOKING_CALENDAR_ID` を共有するため、メニュー単位でスコープすると
+  「別メニュー・同じカレンダー・同じ時刻」の同時予約がすり抜ける（どちらの `pending` も
+  互いに衝突せず、Google 予定の作成前なので FreeBusy も両方「空き」と答えてしまう）。
+  カレンダー単位にすれば、メニュー単位の直列化も自動的に含まれる。
+  空き枠計算の「有効な予約の除外」も同じくカレンダー単位で引く。
+- `reservations.booking_calendar_id` は**予約時点の値を非正規化**して持つ。あとで予約メニューの
+  登録先カレンダーを変えても、既存予約が属する直列化の範囲が動かないようにするため。
+  値が決まらない予約は作れない（未設定だと直列化が効かないため検証で弾く）。
 - **`confirmed` も対象に含める。** Google カレンダーを空き**判定**の正本とするが、
   Google 側の反映が遅れて FreeBusy に直前の自分の予約が現れない窓が残るため、DB でも確定枠を押さえる。
+- **前後バッファはこの制約では表現しない**（枠の生成・空き判定側で扱う）。DB が保証するのは
+  「実際の予約時間帯が重ならない」ことまで。
 - `pending` は仮確保。`expires_at`（5 分）を過ぎたものは無効として扱い、予約作成時に掃除する
   （排他制約は `expires_at` を見られないため）。`rake reservations:sweep_expired_pending` でも掃除できる。
 - `cancelled` / `failed` は対象外なので、キャンセル・失敗した枠は自動的に解放される。
@@ -193,6 +208,11 @@ WHERE (status IN ('pending', 'confirmed'));
 
 **Idempotency-Key は必須。** 同じキーの同時リクエストは「二重予約」ではなく「再送」として扱い、
 枠の排他制約に先に当たった場合も `SLOT_UNAVAILABLE` にはせず冪等なリプレイに落とす。
+
+**Idempotency-Key の照会は Turnstile 検証より前**に行う。Turnstile のトークンは 1 回しか
+検証できないため、応答を取りこぼしたクライアントが同じキー・同じトークンで再送すると、
+既存予約を返すべき場面で `TURNSTILE_FAILED` になり Idempotency-Key の意味が失われる。
+既存予約の再送は「新しい予約試行」ではないので Bot 判定をやり直す必要もない。
 
 日時変更（管理 API）も同じ順序を守る。まず DB の `start_at` / `end_at` を更新して枠を押さえ、
 空き確認が通ったら新しい Google 予定を作り、最後に古い予定を削除する。
@@ -332,10 +352,12 @@ BookingType 1 ─── * BookingTypeOrigin      許可 Origin
 | `booking_type_origins` | `booking_type_id` / `origin`（`booking_type_id` とで uniq） |
 | `weekly_availabilities` | `booking_type_id` / `day_of_week`(0=日〜6=土) / `start_time` / `end_time` |
 | `availability_overrides` | `booking_type_id` / `date`（`booking_type_id` とで uniq） / `is_available` / `start_time` / `end_time` |
-| `reservations` | `public_id`(uniq) / `booking_type_id` / `google_event_id` / `start_at` / `end_at` / `guest_name` / `guest_email` / `guest_company` / `guest_phone` / `answers`(jsonb) / `status` / `cancel_token_hash`(uniq) / `idempotency_key` / `expires_at` / `cancelled_at` |
+| `reservations` | `public_id`(uniq) / `booking_type_id` / `booking_calendar_id` / `google_event_id` / `start_at` / `end_at` / `guest_name` / `guest_email` / `guest_company` / `guest_phone` / `answers`(jsonb) / `status` / `cancel_token_hash`(uniq) / `idempotency_key` / `expires_at` / `cancelled_at` |
 
 - `reservations.status`: `pending` → `confirmed` → `cancelled`、または `pending` → `failed`。
 - `google_booking_calendar_id` は予約メニュー単位の上書き。未指定なら `GOOGLE_BOOKING_CALENDAR_ID`。
+- `reservations.booking_calendar_id` は予約時点で確定させた登録先カレンダー ID。
+  排他制約と空き判定のスコープになる（§3.3）。
 - `idempotency_key` は `(booking_type_id, idempotency_key)` で部分一意インデックス（NOT NULL のみ）。
 - `answers` の列名は草案の `answers_json` から `answers` に変えた（jsonb 型なので接尾辞が冗長）。
 - `start_time` / `end_time` は `time` 型で、**予約メニューのタイムゾーンにおける壁時計時刻**として扱う

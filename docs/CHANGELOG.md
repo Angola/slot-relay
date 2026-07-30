@@ -21,7 +21,9 @@
   - 予約確定（`Reservations::Creator`）— pending での仮確保 → Google FreeBusy での直前確認 →
     Google 予定作成 → confirmed へ更新 → メール送信。
   - **二重予約防止**を PostgreSQL の `EXCLUDE USING gist`（`btree_gist` + `tstzrange`）で実装。
-    対象は `pending` と `confirmed`。実スレッド・別コネクションでの同時実行テストつき。
+    対象は `pending` と `confirmed`、スコープは**登録先 Google カレンダー単位**
+    （予約メニュー単位だと、既定で同じカレンダーを共有する別メニューがすり抜ける）。
+    実スレッド・別コネクションでの同時実行テストつき。
   - `Idempotency-Key` を必須化。同じキーの同時リクエストは冪等な再送として扱う。
   - 公開 API — 予約メニュー取得 / 空き枠取得 / 予約登録 / トークンによる照会・キャンセル。
   - 管理 API — 予約メニューの CRUD、予約の一覧・詳細・キャンセル・日時変更（`X-Admin-Key`）。
@@ -37,7 +39,7 @@
   日付選択 → 時間選択 → 入力 → Turnstile → 予約 POST → 完了、およびキャンセル画面。
 - **CI（`.github/workflows/ci.yml`）を追加**。api は `bundler-audit` + Rails テスト（PostgreSQL 16 の
   service コンテナ）、web は型チェック・テスト・ビルドを PR ごとに実行する。
-- テストを 180 件追加（api 165 / web 15）。ユニット・ユースケース（登録 → 空き枠 → 予約 → 照会 →
+- テストを 191 件追加（api 176 / web 15）。ユニット・ユースケース（登録 → 空き枠 → 予約 → 照会 →
   キャンセルの通し）・画面遷移・同時実行をカバー。担保箇所の一覧は `docs/CODE_READING.md`。
 
 - `.gitattributes` を新設し、`docs/CHANGELOG.md merge=union` を指定。複数 PR が `Unreleased` に
