@@ -126,11 +126,24 @@ Busy 時間は空・予定は作成されない（起動時に警告が出る）
 | --- | --- |
 | Build Pack | Dockerfile |
 | Base Directory | `/api` |
-| Dockerfile Location | `/api/Dockerfile` |
+| Dockerfile Location | `/Dockerfile` |
 | Domain | `https://booking-api.stagehubs.net` |
 | Port（Ports Exposes） | `3001` |
 | Health Check Path | `/health` |
 | Auto Deploy | `main` ブランチ |
+
+> **Dockerfile Location は Base Directory からの相対パス。** ここに `/api/Dockerfile` と
+> 書くと `api/api/Dockerfile` を探しに行き、
+> `failed to build: resolve : lstat .../api/api: no such file or directory` で落ちる。
+>
+> ローカル開発用の `api/Dockerfile.dev` は**指定しないこと**（本番用は `api/Dockerfile`）。
+
+**リポジトリの取得方法**
+
+`slot-relay` は public リポジトリなので、ソースは **Public Repository**（HTTPS）を選ぶ。
+SSH を使う設定だと Coolify が生成した鍵を GitHub の Deploy keys に登録するまで
+`Permission denied (publickey)` で失敗する。private 化するときは
+Deploy key（読み取りのみ）か GitHub App 連携に切り替える。
 
 - 上記の環境変数をすべて設定する
 - `btree_gist` 拡張はマイグレーションが `CREATE EXTENSION` で作る（作成権限のあるロールが必要）
