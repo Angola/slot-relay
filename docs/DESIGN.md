@@ -397,6 +397,7 @@ BookingType 1 ─── * BookingTypeOrigin      許可 Origin
 DB にはその SHA-256 ハッシュだけを保存し、`public_id` を知っただけでは他人の予約を触れない。
 
 **サイト側に置く設定はこれだけ。** Google の認証情報や管理 API キーは置かない。
+サイト実装者向けの手引きは [`INTEGRATION.md`](INTEGRATION.md)（そちらが一次情報）。
 
 ```
 NEXT_PUBLIC_BOOKING_API_URL=https://booking-api.stagehubs.net

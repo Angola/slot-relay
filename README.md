@@ -31,6 +31,7 @@ API の責務は 4 点だけ。
 
 | ファイル | 内容 |
 | --- | --- |
+| [`docs/INTEGRATION.md`](docs/INTEGRATION.md) | **予約フォームを作る人向けの手引き**（サイト側の実装者はここから） |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | プロダクト仕様・アーキテクチャ（**一次情報**） |
 | [`docs/CODE_READING.md`](docs/CODE_READING.md) | どこから読めばいいか・テストの地図 |
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | Coolify へのデプロイ手順・環境変数 |
