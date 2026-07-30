@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-30
+
 ### Added
 
 - **Google カレンダー連携の予約 API（`api/`）を新設**。Ruby on Rails 8.1（API モード）+ PostgreSQL 16。
