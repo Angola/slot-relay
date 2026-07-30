@@ -30,7 +30,7 @@ API 側で `bin/rails db:seed` を実行し、許可 Origin に `http://localhos
 これだけ。Google の認証情報や管理 API キーは置かない。
 
 ```
-NEXT_PUBLIC_BOOKING_API_URL=https://booking-api.genba-tsunagu.jp
+NEXT_PUBLIC_BOOKING_API_URL=https://booking-api.stagehubs.net
 NEXT_PUBLIC_BOOKING_TYPE=genba-tsunagu-consultation
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 ```

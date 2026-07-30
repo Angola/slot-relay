@@ -10,6 +10,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **本番 API のドメインを `booking-api.genba-tsunagu.jp` から
+  `booking-api.stagehubs.net` に変更した。** 将来複数のサイトから使う想定のため、
+  特定サイトのサブドメインには置かない。
+  影響するのはドキュメントと既定値（`PUBLIC_BASE_URL` / `ALLOWED_HOSTS` /
+  `NEXT_PUBLIC_BOOKING_API_URL` のフォールバック）のみで、動作するコードは変わらない。
+  実値は Coolify の環境変数で指定する。
+  **Google Cloud の「承認済みのリダイレクト URI」も新ドメインに差し替えること**
+  （`https://booking-api.stagehubs.net/v1/admin/google/oauth/callback`）。
+  利用側サイト（`genba-tsunagu.jp`）の許可 Origin・メール差出人・予約メニューの slug は変更なし。
+
 ## [0.3.1] - 2026-07-30
 
 ### Security

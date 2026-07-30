@@ -53,9 +53,15 @@ Coolify 上のリソースは次の 2 つだけ。Web アプリ・Redis・ワー
 | --- | --- | --- |
 | local | 開発 | api: `http://localhost:3011` / web: `http://localhost:3012`（`compose.yaml`・`.env` で変更可） |
 | staging | なし（MVP では用意しない） | — |
-| production | 本番 | `https://booking-api.genba-tsunagu.jp` |
+| production | 本番 | `https://booking-api.stagehubs.net` |
 
-API ドメインは独立させ、genba-tsunagu.jp のデプロイと分離する。手順は `docs/DEPLOY.md`。
+API ドメインは**利用側サイトとは別のドメイン**（`stagehubs.net`）に置く。
+genba-tsunagu.jp のデプロイと分離するのが目的で、この API は将来複数のサイトから
+使う想定のため、特定サイトのサブドメインには置かない。手順は `docs/DEPLOY.md`。
+
+> 利用側サイト（`genba-tsunagu.jp` など）の扱いは変わらない。
+> 許可 Origin・確認メールの差出人・予約メニューの slug はサイト側の設定であり、
+> API のドメインとは独立している。
 
 ### 2.3 技術的な制約・前提
 
@@ -263,7 +269,7 @@ POST /v1/public/reservations/:publicToken/cancel
   "status": "confirmed",
   "startAt": "2026-08-03T10:00:00+09:00",
   "endAt": "2026-08-03T11:00:00+09:00",
-  "cancelUrl": "https://booking-api.genba-tsunagu.jp/c/res_xxx/<token>"
+  "cancelUrl": "https://booking-api.stagehubs.net/c/res_xxx/<token>"
 }
 ```
 
@@ -393,7 +399,7 @@ DB にはその SHA-256 ハッシュだけを保存し、`public_id` を知っ�
 **サイト側に置く設定はこれだけ。** Google の認証情報や管理 API キーは置かない。
 
 ```
-NEXT_PUBLIC_BOOKING_API_URL=https://booking-api.genba-tsunagu.jp
+NEXT_PUBLIC_BOOKING_API_URL=https://booking-api.stagehubs.net
 NEXT_PUBLIC_BOOKING_TYPE=genba-tsunagu-consultation
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 ```

@@ -52,7 +52,7 @@ Rails.application.configure do
 
   # Set host to be used by links generated in mailer templates.
   config.action_mailer.default_url_options = {
-    host: URI.parse(ENV.fetch("PUBLIC_BASE_URL", "https://booking-api.genba-tsunagu.jp")).host,
+    host: URI.parse(ENV.fetch("PUBLIC_BASE_URL", "https://booking-api.stagehubs.net")).host,
     protocol: "https"
   }
 
