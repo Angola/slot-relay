@@ -1,0 +1,17 @@
+<%= @reservation.guest_name %> 様
+
+ご予約の日時を変更しました。
+
+予約番号: <%= @reservation.public_id %>
+メニュー: <%= @booking_type.name %>
+<% if @previous_start_at.present? -%>
+変更前  : <%= l(@previous_start_at, format: :reservation) %>
+<% end -%>
+変更後  : <%= @period %>（<%= @booking_type.time_zone %>）
+
+<% if @cancel_url.present? -%>
+キャンセルはこちら:
+<%= @cancel_url %>
+<% end -%>
+
+どうぞよろしくお願いいたします。

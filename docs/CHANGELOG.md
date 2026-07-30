@@ -12,6 +12,36 @@
 
 ### Added
 
+- **Google カレンダー連携の予約 API（`api/`）を新設**。Ruby on Rails 8.1（API モード）+ PostgreSQL 16。
+  設計の一次情報は `docs/DESIGN.md`、経緯は `docs/plans/2026-07-30-google-calendar-booking-api.md`。
+  - 予約メニュー（`booking_types`）・曜日別受付時間・特定日の休業／時間変更・許可 Origin のデータモデル。
+  - 空き枠計算（`AvailabilityCalculator`）— 曜日別受付時間からの枠生成、特定日オーバーライド、
+    最短受付時間、最大予約可能日、Google FreeBusy の Busy 時間、前後バッファ、既存予約の除外。
+    枠が 0 件の日も `slots: []` で返す。Busy 時間を取得できない場合は 502 にして空き扱いにしない。
+  - 予約確定（`Reservations::Creator`）— pending での仮確保 → Google FreeBusy での直前確認 →
+    Google 予定作成 → confirmed へ更新 → メール送信。
+  - **二重予約防止**を PostgreSQL の `EXCLUDE USING gist`（`btree_gist` + `tstzrange`）で実装。
+    対象は `pending` と `confirmed`、スコープは**登録先 Google カレンダー単位**
+    （予約メニュー単位だと、既定で同じカレンダーを共有する別メニューがすり抜ける）。
+    実スレッド・別コネクションでの同時実行テストつき。
+  - `Idempotency-Key` を必須化。同じキーの同時リクエストは冪等な再送として扱う。
+  - 公開 API — 予約メニュー取得 / 空き枠取得 / 予約登録 / トークンによる照会・キャンセル。
+  - 管理 API — 予約メニューの CRUD、予約の一覧・詳細・キャンセル・日時変更（`X-Admin-Key`）。
+  - 運用 API — `/health`（DB を触らない liveness）/ `/ready`（DB 接続まで確認）。
+  - メール（ActionMailer + SMTP）— 予約者向け確定・キャンセル・日時変更、管理者向け新規予約・
+    キャンセル・カレンダー連携エラー。送信失敗では予約を失敗させずログに記録する。
+  - OpenAPI 3.1 ドキュメント（手書き・`/openapi.json`）と Swagger UI（`/docs`）。
+  - Cloudflare Turnstile 検証と rack-attack によるレートリミット（公開／予約 POST／管理で別枠）。
+  - 本番用 Dockerfile（非 root 実行）、`bin/docker-entrypoint`、`.env.example`、
+    `rake reservations:sweep_expired_pending` / `reservations:stats`。
+- **予約フォームの参照実装（`web/`）を新設**。Next.js 15（App Router）+ React 19 + TypeScript。
+  公開 API 2 本だけで予約画面が成立することを示すためのもので、本番デプロイ対象ではない。
+  日付選択 → 時間選択 → 入力 → Turnstile → 予約 POST → 完了、およびキャンセル画面。
+- **CI（`.github/workflows/ci.yml`）を追加**。api は `bundler-audit` + Rails テスト（PostgreSQL 16 の
+  service コンテナ）、web は型チェック・テスト・ビルドを PR ごとに実行する。
+- テストを 191 件追加（api 176 / web 15）。ユニット・ユースケース（登録 → 空き枠 → 予約 → 照会 →
+  キャンセルの通し）・画面遷移・同時実行をカバー。担保箇所の一覧は `docs/CODE_READING.md`。
+
 - `.gitattributes` を新設し、`docs/CHANGELOG.md merge=union` を指定。複数 PR が `Unreleased` に
   追記した際のマージコンフリクトを、Git 組み込みの union マージドライバ（両方の行を残して自動マージ）
   で仕組みとして解消。あわせて `CLAUDE.md` にルールとして明記。
@@ -26,6 +56,16 @@
 - 未初期化マーカー `.github/.template-init-pending` を追加。
 
 ### Changed
+
+- `docs/DESIGN.md` / `docs/CODE_READING.md` / `docs/DEPLOY.md` / `docs/SECURITY.md` /
+  `docs/MILESTONE.md` / `README.md` をテンプレートのひな形から実際の内容へ差し替え。
+- `.gitignore` に Rails / Next.js のビルド成果物・依存ディレクトリを追加。
+- 草案（Node.js + Fastify + Drizzle + Zod）から **Ruby on Rails + Next.js** へ技術選定を変更。
+  設計（責務分離・API 契約・データモデル・二重予約防止の方式）は草案どおり。
+- 草案からの設計変更 2 点（理由は plan に記載）:
+  - 排他制約の対象を `pending` のみ → `pending` + `confirmed` に拡大。Google 側の反映遅延で
+    FreeBusy に自分の直前予約が現れない窓を DB 側で塞ぐため。
+  - `google_booking_calendar_id` を予約メニュー単位で上書きできるようにした（環境変数は既定値）。
 
 - 記録の管理を Markdown 3 本（`docs/MILESTONE.md` / `docs/plans/` / `docs/CHANGELOG.md`）に一本化。
   それに伴い `CLAUDE.md` / `README.md` / `docs/TEMPLATE_GUIDE.md` / `docs/DESIGN.md` /

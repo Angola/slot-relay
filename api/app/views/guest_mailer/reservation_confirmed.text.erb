@@ -1,0 +1,35 @@
+<%= @reservation.guest_name %> 様
+
+<%= @booking_type.name %>のご予約を承りました。
+
+────────────────────────────
+予約内容
+────────────────────────────
+予約番号: <%= @reservation.public_id %>
+メニュー: <%= @booking_type.name %>
+日時    : <%= @period %>（<%= @booking_type.time_zone %>）
+<% if @reservation.guest_company.present? -%>
+会社名  : <%= @reservation.guest_company %>
+<% end -%>
+お名前  : <%= @reservation.guest_name %>
+<% if @reservation.guest_phone.present? -%>
+電話番号: <%= @reservation.guest_phone %>
+<% end -%>
+<% @reservation.answers.each do |key, value| -%>
+
+<%= key %>:
+<%= value %>
+<% end -%>
+
+<% if @cancel_url.present? -%>
+────────────────────────────
+キャンセル
+────────────────────────────
+ご都合が悪くなった場合は、下記 URL からキャンセルしてください。
+
+<%= @cancel_url %>
+
+※この URL は本人確認用のトークンを含みます。第三者に共有しないでください。
+<% end -%>
+
+当日はどうぞよろしくお願いいたします。

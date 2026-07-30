@@ -1,0 +1,11 @@
+予約がキャンセルされました。
+
+予約番号: <%= @reservation.public_id %>
+メニュー: <%= @booking_type.name %>（<%= @booking_type.slug %>）
+日時    : <%= @period %>（<%= @booking_type.time_zone %>）
+
+会社名  : <%= @reservation.guest_company.presence || "-" %>
+お名前  : <%= @reservation.guest_name %>
+メール  : <%= @reservation.guest_email %>
+
+Google カレンダーの予定も削除済みです（削除に失敗した場合は別途エラー通知が届きます）。
