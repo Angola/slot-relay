@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-30
+
 ### Changed
 
 - **本番 API のドメインを `booking-api.genba-tsunagu.jp` から
