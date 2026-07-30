@@ -53,7 +53,8 @@
 | OAuth コールバックが無認証で叩かれる | コールバックは Google からのリダイレクトで `X-Admin-Key` を付けられない。代わりに `state` を署名付きトークン（10 分で失効）にして検証する。有効な `state` の発行には管理キーが要る | 対応済み |
 | 設定画面のセッション悪用 | 同意直後に発行する Cookie は **HttpOnly / SameSite=Strict / 30 分失効 / path=`/v1/admin/google`**、production では Secure | 対応済み |
 | 設定画面への CSRF | Cookie で認証する唯一の画面のため、POST は署名付き CSRF トークン（セッションの nonce に紐づく）を必須にする。`X-Admin-Key` 経由はブラウザが自動送信しないため対象外 | 対応済み |
-| 管理キーが URL に載る | 連携は「API で認可 URL を発行 → ブラウザで開く」の 2 段。管理キーをクエリに置かない。設定画面には `<meta name="referrer" content="no-referrer">` と `noindex` を付ける | 対応済み |
+| 管理キーが URL に載る | 設定画面のログインは**フォームの POST ボディ**で管理キーを受け取り、短期セッション Cookie に引き換える。クエリには置かない。設定画面には `<meta name="referrer" content="no-referrer">` と `noindex` を付ける | 対応済み |
+| 設定画面ログインの総当たり | `/v1/admin` 配下のレートリミット（既定 60req/60s）が効く。比較は `secure_compare`。失敗は IP つきでログに残す | 対応済み |
 
 ## 3. シークレット管理
 

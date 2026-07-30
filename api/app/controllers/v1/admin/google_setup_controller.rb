@@ -6,22 +6,51 @@ module V1
     #
     #   GET  /v1/admin/google/setup       — 連携状態とカレンダー選択の画面
     #   POST /v1/admin/google/setup       — 選択を保存
+    #   POST /v1/admin/google/login       — 管理キーを入力してセッションを得る
+    #   POST /v1/admin/google/connect     — Google の同意画面へ送る
     #   POST /v1/admin/google/disconnect  — 連携を解除
     #
     # 認証は次のどちらか。
-    #   - コールバックが発行した短期セッション Cookie（30 分・SameSite=Strict）
+    #   - 短期セッション Cookie（30 分・SameSite=Strict）。login か OAuth コールバックが発行する
     #   - X-Admin-Key ヘッダ（API クライアントから触るとき）
+    #
+    # ブラウザは任意のヘッダを付けられないので、直接 URL を開いたときは login フォームを出す。
+    # 管理キーは POST のボディで送り、URL・履歴・Referer に残さない。
     #
     # Cookie で認証する唯一の画面なので、POST には CSRF トークンを必須にする。
     class GoogleSetupController < BaseController
       include ActionController::Cookies
 
       skip_before_action :authenticate_admin!
-      before_action :authenticate_setup!
-      before_action :verify_csrf!, only: %i[update disconnect]
+      before_action :authenticate_setup!, except: :login
+      before_action :verify_csrf!, only: %i[update disconnect connect]
 
       def show
         render_page
+      end
+
+      # 管理キーを受け取って設定画面のセッションを発行する。
+      # 総当たりは /v1/admin 配下のレートリミット（rack-attack）で抑える。
+      def login
+        unless admin_key_valid?(params[:adminKey])
+          Rails.logger.warn("[slot-relay] 設定画面のログインに失敗しました（IP: #{request.remote_ip}）")
+          return render_login(error: "管理 API キーが正しくありません。", status: :unauthorized)
+        end
+
+        issue_setup_session!
+        redirect_to setup_path, allow_other_host: false
+      end
+
+      # 同意画面へ送る。JSON を返す POST /v1/admin/google/oauth/url のブラウザ版。
+      def connect
+        unless SlotRelay.config.google_oauth_configured?
+          return render_page(
+            error: "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET が未設定です。",
+            status: :service_unavailable
+          )
+        end
+
+        redirect_to GoogleOauth::Authorization.authorization_url, allow_other_host: true
       end
 
       def update
@@ -43,13 +72,12 @@ module V1
       private
 
       # 短期セッション Cookie か X-Admin-Key のどちらかがあればよい。
+      # どちらも無いブラウザからのアクセスには、ログインフォームを出す。
       def authenticate_setup!
         return if GoogleOauth::SetupSession.valid?(session_cookie)
         return if admin_key_valid?
 
-        render html: GoogleSetupPage.unauthorized_html.html_safe, # rubocop:disable Rails/OutputSafety
-               content_type: "text/html",
-               status: :unauthorized
+        render_login(status: :unauthorized)
       end
 
       # Cookie で認証している場合のみ CSRF トークンを検証する。
@@ -63,12 +91,29 @@ module V1
         ).html_safe, content_type: "text/html", status: :forbidden # rubocop:disable Rails/OutputSafety
       end
 
-      def admin_key_valid?
+      # @param presented [String, nil] 省略時は X-Admin-Key ヘッダを見る
+      def admin_key_valid?(presented = nil)
         return false unless SlotRelay.config.admin_api_configured?
 
-        presented = request.headers["X-Admin-Key"].to_s
+        presented = request.headers["X-Admin-Key"] if presented.nil?
+        presented = presented.to_s
         presented.present? &&
           ActiveSupport::SecurityUtils.secure_compare(presented, SlotRelay.config.admin_api_key)
+      end
+
+      def issue_setup_session!
+        cookies[GoogleOauth::SetupSession::COOKIE_NAME] =
+          GoogleOauth::SetupSession.cookie_options.merge(value: GoogleOauth::SetupSession.issue)
+      end
+
+      def render_login(error: nil, status: :unauthorized)
+        render html: GoogleSetupPage.login_html(error: error).html_safe, # rubocop:disable Rails/OutputSafety
+               content_type: "text/html",
+               status: status
+      end
+
+      def setup_path
+        "/v1/admin/google/setup"
       end
 
       def session_cookie

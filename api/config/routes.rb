@@ -32,6 +32,9 @@ Rails.application.routes.draw do
       get  "google/calendars"      => "google_calendars#index", as: :google_calendars
       get  "google/setup"          => "google_setup#show", as: :google_setup
       post "google/setup"          => "google_setup#update"
+      # ブラウザだけで完結させるための導線（管理キーはフォームの POST ボディで送る）
+      post "google/login"          => "google_setup#login", as: :google_login
+      post "google/connect"        => "google_setup#connect", as: :google_connect
       post "google/disconnect"     => "google_setup#disconnect", as: :google_disconnect
 
       resources :booking_types, path: "booking-types", only: %i[index create show update destroy]

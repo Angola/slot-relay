@@ -417,15 +417,25 @@ Google Cloud の「OAuth 2.0 クライアント ID（ウェブ アプリケー�
 | `calendar.freebusy` | 空き判定。FreeBusy API のみで、件名・説明・参加者は取得しない |
 | `calendar.events` | 予約の予定を作成・削除する |
 
-**連携フロー**（管理 API キーを URL に載せないため 2 段構え）
+**連携フロー**（ブラウザだけで完結する）
 
 ```
-POST /v1/admin/google/oauth/url  (X-Admin-Key)  → { authUrl }
-        ↓ ブラウザで authUrl を開き、Google の同意画面を通す
+GET  /v1/admin/google/setup      → 未認証ならログインフォーム
+POST /v1/admin/google/login      管理キーを POST ボディで送り、短期セッション Cookie を得る
+POST /v1/admin/google/connect    → Google の同意画面へリダイレクト
+        ↓ 同意
 GET  /v1/admin/google/oauth/callback?code=&state=
-        ↓ refresh token を暗号化して保存し、短期セッション Cookie を発行
+        ↓ refresh token を暗号化して保存
 GET  /v1/admin/google/setup      （カレンダーを選ぶ画面）
 ```
+
+API クライアントからは `POST /v1/admin/google/oauth/url`（`X-Admin-Key`）で
+`authUrl` を受け取り、ブラウザで開いてもよい。
+
+**管理 API キーを URL に載せない。** ブラウザは任意のヘッダを付けられないため、
+ヘッダ認証を強制すると curl が必須になる。かといってクエリに置くと履歴・Referer に残る。
+そこで**フォームの POST ボディ**で受け取り、短期セッション Cookie に引き換える。
+総当たりは `/v1/admin` 配下のレートリミット（rack-attack）で抑える。
 
 `state` は署名付きトークン（10 分で失効）。コールバックは Google からのリダイレクトで
 `X-Admin-Key` を付けられないため、正当性はこの署名で確認する。

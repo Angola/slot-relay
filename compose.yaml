@@ -46,6 +46,12 @@ services:
       # 連携フローのリダイレクト先。Google Cloud の「承認済みのリダイレクト URI」と
       # 完全一致させる必要がある。
       PUBLIC_BASE_URL: "http://localhost:${API_PORT:-3011}"
+      # Google OAuth の認証情報。ルートの .env に書けばここから渡る
+      # （compose のルート .env は ${...} の展開にしか使われず、コンテナには自動で入らないため）。
+      # api/.env に書いてもよい（下の env_file が読む）。
+      GOOGLE_OAUTH_CLIENT_ID: "${GOOGLE_OAUTH_CLIENT_ID:-}"
+      GOOGLE_OAUTH_CLIENT_SECRET: "${GOOGLE_OAUTH_CLIENT_SECRET:-}"
+      GOOGLE_OAUTH_REDIRECT_URI: "${GOOGLE_OAUTH_REDIRECT_URI:-}"
       # 予約フォーム（web）のオリジン。seeds が許可 Origin として登録する。
       DEV_ALLOWED_ORIGINS: "http://localhost:${WEB_PORT:-3012}"
       # キャンセル URL を web のローカル URL で組み立てる

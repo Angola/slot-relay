@@ -9,6 +9,8 @@ class GoogleSetupPage
   include ERB::Util
 
   SETUP_PATH = "/v1/admin/google/setup"
+  LOGIN_PATH = "/v1/admin/google/login"
+  CONNECT_PATH = "/v1/admin/google/connect"
   DISCONNECT_PATH = "/v1/admin/google/disconnect"
 
   def initialize(connection:, calendars:, booking_types:, csrf_token:, notice: nil, error: nil)
@@ -39,15 +41,24 @@ class GoogleSetupPage
         HTML
     end
 
-    def unauthorized_html
+    # ログインフォーム。ブラウザは任意のヘッダを付けられないので、
+    # 管理キーは POST のボディで受け取る（URL・履歴・Referer に残さない）。
+    def login_html(error: nil)
+      message = error.present? ? %(<p class="warn">#{html_escape(error)}</p>) : ""
+
       new(connection: nil, calendars: [], booking_types: [], csrf_token: nil)
         .send(:layout, <<~HTML)
-          <div class="card error">
-            <h2>この画面を開く権限がありません</h2>
-            <p>設定画面のセッションは 30 分で切れます。管理 API の
-              <code>POST /v1/admin/google/oauth/url</code> で認可 URL を発行し、
-              Google の同意画面を通り直してください。</p>
-            <p class="muted"><code>X-Admin-Key</code> ヘッダを付けて開くこともできます。</p>
+          <div class="card">
+            <h2>管理 API キーでログイン</h2>
+            <p class="muted">Google 連携の設定画面を開きます。セッションは 30 分で切れます。</p>
+            #{message}
+            <form method="post" action="#{LOGIN_PATH}">
+              <label class="field">
+                <span>管理 API キー（<code>ADMIN_API_KEY</code>）</span>
+                <input type="password" name="adminKey" autocomplete="off" autofocus required>
+              </label>
+              <button type="submit" class="primary">開く</button>
+            </form>
           </div>
         HTML
     end
@@ -87,11 +98,17 @@ class GoogleSetupPage
           <dt>連携日時</dt><dd>#{html_escape(connection.connected_at.in_time_zone("Asia/Tokyo").strftime("%Y/%m/%d %H:%M"))}</dd>
         </dl>
         #{missing_scopes_warning}
-        <form method="post" action="#{DISCONNECT_PATH}"
-              onsubmit="return confirm('連携を解除します。空き取得と予定作成ができなくなります。よろしいですか？');">
-          #{csrf_field}
-          <button type="submit" class="danger">連携を解除する</button>
-        </form>
+        <div class="row">
+          <form method="post" action="#{CONNECT_PATH}">
+            #{csrf_field}
+            <button type="submit">連携をやり直す</button>
+          </form>
+          <form method="post" action="#{DISCONNECT_PATH}"
+                onsubmit="return confirm('連携を解除します。空き取得と予定作成ができなくなります。よろしいですか？');">
+            #{csrf_field}
+            <button type="submit" class="danger">連携を解除する</button>
+          </form>
+        </div>
       </div>
     HTML
   end
@@ -101,9 +118,13 @@ class GoogleSetupPage
       <div class="card">
         <h2>Google 未連携</h2>
         <p>まだ Google アカウントが連携されていません。空き時間の取得と予定の作成ができません。</p>
-        <p class="muted">管理 API の <code>POST /v1/admin/google/oauth/url</code>
-          （<code>X-Admin-Key</code> 必須）で認可 URL を発行し、ブラウザで開いて同意してください。
-          Swagger UI（<a href="/docs">/docs</a>）からも実行できます。</p>
+        <form method="post" action="#{CONNECT_PATH}">
+          #{csrf_field}
+          <button type="submit" class="primary">Google と連携する</button>
+        </form>
+        <p class="muted">ボタンを押すと Google の同意画面に移ります。同意後、この画面に戻って
+          使うカレンダーを選べます。API から行う場合は
+          <code>POST /v1/admin/google/oauth/url</code>（Swagger UI は <a href="/docs">/docs</a>）。</p>
       </div>
     HTML
   end
@@ -276,10 +297,17 @@ class GoogleSetupPage
       code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       button {
         font: inherit; padding: 8px 20px; border-radius: 8px;
-        border: 1px solid transparent; cursor: pointer;
+        border: 1px solid #d1d5db; background: #fff; cursor: pointer;
       }
-      button.primary { background: #2563eb; color: #fff; }
+      button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
       button.danger { background: #fff; color: #b91c1c; border-color: #e0a1a1; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .field { display: block; margin: 12px 0; }
+      .field span { display: block; font-size: 13px; margin-bottom: 4px; }
+      .field input {
+        font: inherit; width: 100%; padding: 8px 10px;
+        border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: inherit;
+      }
       a { color: #2563eb; }
       @media (prefers-color-scheme: dark) {
         body { background: #16181d; color: #e5e7eb; }
@@ -288,7 +316,9 @@ class GoogleSetupPage
         .card.error  { background: #2a1a1a; border-color: #7f3a3a; }
         .option:hover { background: #262a31; }
         .muted, dt, .option code { color: #9ca3af; }
+        button { background: #262a31; color: #e5e7eb; border-color: #3f4550; }
         button.danger { background: #1e2126; color: #f87171; border-color: #7f3a3a; }
+        .field input { background: #262a31; border-color: #3f4550; }
       }
     CSS
   end

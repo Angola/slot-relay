@@ -40,6 +40,10 @@
   - `GET /v1/admin/google/oauth/callback` — 同意後の戻り先。Google からのリダイレクトで
     `X-Admin-Key` を付けられないため、署名付き `state` で正当性を確認する。
   - `GET /v1/admin/google/calendars` — 連携アカウントのカレンダー一覧（書き込み可否つき）。
+  - `POST /v1/admin/google/login` / `POST /v1/admin/google/connect` —
+    **ブラウザだけで連携を完結させる導線**。設定画面を直接開くとログインフォームが出て、
+    管理 API キーを POST ボディで送ると短期セッションに引き換わる。
+    そこから「Google と連携する」で同意画面へ進める（curl が要らない）。
   - `GET|POST /v1/admin/google/setup` — **カレンダー設定画面**（サーバー描画の HTML）。
     予約メニューごとに登録先カレンダー（ラジオ）と空き判定カレンダー（チェックボックス）を選ぶ。
     認証は同意直後の短期セッション Cookie（30 分・HttpOnly・SameSite=Strict）か `X-Admin-Key`。
@@ -56,6 +60,9 @@
   経緯は `docs/plans/2026-07-30-local-compose.md`。
   - ポートは `.env` で変更でき、既定は API 3011 / web 3012 / PostgreSQL 55432
     （3000・3001 は他プロジェクトと衝突しやすいため既定をずらした）。
+  - `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` はルートの `.env` に書けば
+    api コンテナへ渡る（compose のルート `.env` は本来 `${...}` の展開にしか使われないため、
+    明示的に受け渡している）。`api/.env` に書いてもよい。
   - コンテナはホストと同じ uid/gid で動かし、バインドマウント先に root 所有のファイルを作らない。
   - DB データは名前付きボリューム `db-data`。`docker compose down -v` で明示的に削除する。
 

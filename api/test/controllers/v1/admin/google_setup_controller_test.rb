@@ -15,12 +15,79 @@ module V1
 
       # --- 認証 ---
 
-      test "認証が無ければ 401 で HTML を返す" do
+      LOGIN_PATH = "/v1/admin/google/login"
+      CONNECT_PATH = "/v1/admin/google/connect"
+
+      test "認証が無ければ 401 でログインフォームを返す" do
         get SETUP_PATH
 
         assert_response :unauthorized
         assert_equal "text/html", response.media_type
-        assert_includes response.body, "権限がありません"
+        # ブラウザはヘッダを付けられないので、その場でログインできる導線を出す
+        assert_includes response.body, %(action="#{LOGIN_PATH}")
+        assert_includes response.body, %(name="adminKey")
+      end
+
+      # --- ログイン（ブラウザからの導線） ---
+
+      test "管理キーを POST するとセッションが発行され設定画面へ進む" do
+        post LOGIN_PATH, params: { adminKey: SlotRelayTestConfig::ADMIN_API_KEY }
+
+        assert_redirected_to SETUP_PATH
+        assert GoogleOauth::SetupSession.valid?(cookies[GoogleOauth::SetupSession::COOKIE_NAME.to_s])
+
+        follow_redirect!
+        assert_response :ok
+      end
+
+      test "間違った管理キーではセッションを発行しない" do
+        post LOGIN_PATH, params: { adminKey: "wrong-key" }
+
+        assert_response :unauthorized
+        assert_includes response.body, "正しくありません"
+        assert_not GoogleOauth::SetupSession.valid?(cookies[GoogleOauth::SetupSession::COOKIE_NAME.to_s].to_s)
+      end
+
+      test "管理キーが空でも通らない" do
+        post LOGIN_PATH, params: { adminKey: "" }
+
+        assert_response :unauthorized
+      end
+
+      test "管理キーが未設定なら誰も入れない" do
+        configure_slot_relay!(admin_api_key: nil)
+
+        post LOGIN_PATH, params: { adminKey: "" }
+
+        assert_response :unauthorized
+      end
+
+      # --- 連携の開始（ブラウザからの導線） ---
+
+      test "連携ボタンから Google の同意画面へリダイレクトする" do
+        token = set_setup_cookie
+
+        post CONNECT_PATH, params: { csrfToken: GoogleOauth::SetupSession.csrf_token_for(token) }
+
+        assert_response :redirect
+        assert response.location.start_with?(GoogleOauth::Authorization::AUTH_ENDPOINT)
+      end
+
+      test "連携ボタンも CSRF トークンを要求する" do
+        set_setup_cookie
+
+        post CONNECT_PATH
+
+        assert_response :forbidden
+      end
+
+      test "OAuth クライアント未設定なら連携ボタンは 503" do
+        configure_slot_relay!(google_oauth_client_id: nil, google_oauth_client_secret: nil)
+
+        post CONNECT_PATH, headers: admin_headers
+
+        assert_response :service_unavailable
+        assert_includes response.body, "GOOGLE_OAUTH_CLIENT_ID"
       end
 
       test "X-Admin-Key で開ける" do

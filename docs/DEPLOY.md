@@ -165,21 +165,27 @@ curl -X POST https://booking-api.genba-tsunagu.jp/v1/admin/booking-types \
 デプロイ後に一度だけ行う。**未連携のうちは空き取得・予約登録が 502 になる**
 （黙って「全部空き」にしないための仕様）。
 
+**ブラウザだけで完結する。**
+
+1. `https://booking-api.genba-tsunagu.jp/v1/admin/google/setup` を開く
+2. ログインフォームに `ADMIN_API_KEY` を入力する
+   （管理キーは POST のボディで送るので、URL・履歴・Referer には残らない）
+3. **「Google と連携する」**を押し、予約を入れたい Google アカウントで同意する
+   （未審査アプリの警告が出たら「詳細」→「安全でないページに移動」で進む）
+4. 同意後、自動でカレンダー設定画面に戻る
+5. 予約メニューごとに **登録先カレンダー**（ラジオ）と
+   **空き判定に使うカレンダー**（チェックボックス）を選んで保存する
+
+セッションは 30 分で切れる。切れたら同じ URL を開いて入り直す。
+
+API から行う場合は次のとおり。
+
 ```bash
-# 1. 同意画面の URL を発行する（10 分で失効）
+# 同意画面の URL を発行する（10 分で失効）。ブラウザで開いて同意する
 curl -X POST https://booking-api.genba-tsunagu.jp/v1/admin/google/oauth/url \
   -H "X-Admin-Key: $ADMIN_API_KEY"
 # → { "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?..." }
 ```
-
-2. `authUrl` をブラウザで開き、予約を入れたい Google アカウントで同意する
-   （未審査アプリの警告が出たら「詳細」→「安全でないページに移動」で進む）
-3. 同意後、自動でカレンダー設定画面（`/v1/admin/google/setup`）に移る
-4. 予約メニューごとに **登録先カレンダー**（ラジオ）と
-   **空き判定に使うカレンダー**（チェックボックス）を選んで保存する
-
-設定画面のセッションは 30 分で切れる。開き直したいときは 1 からやり直すか、
-`X-Admin-Key` ヘッダを付けて直接開く。
 
 Swagger UI（`/docs`）からも同じ操作ができる。カレンダー ID を直接指定したい場合は
 `GET /v1/admin/google/calendars` で一覧を取り、
