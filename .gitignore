@@ -1,0 +1,31 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ログ・一時ファイル
+*.log
+tmp/
+*.tmp
+
+# 環境変数・シークレット（リポジトリに平文で置かない）
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 依存・ビルド成果物（言語選定後に必要に応じて追記）
+# node_modules/
+# dist/
+# build/
+# coverage/
+
+# Terraform（IaC を使う場合。認証情報を含むため必ず除外）
+# *.tfvars
+# *.tfstate
+# *.tfstate.*
+# .terraform/

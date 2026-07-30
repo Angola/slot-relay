@@ -1,0 +1,5 @@
+# CHANGELOG は複数 PR が [Unreleased] に追記して毎回コンフリクトするため、
+# union マージ（両方の行を残して自動マージ）を指定する。
+# merge=union は Git 組み込みのマージドライバで、追加設定は不要。
+# ローカルの merge / rebase / cherry-pick でも GitHub 上のマージでも効く。
+docs/CHANGELOG.md merge=union

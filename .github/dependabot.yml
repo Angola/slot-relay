@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # GitHub Actions（version-bump 等）の依存を更新
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # 各プロジェクトの技術選定後に、言語別のエコシステムを追加する。例:
+  # - package-ecosystem: npm        # apps/web など
+  #   directory: /
+  #   schedule:
+  #     interval: weekly
+  # - package-ecosystem: bundler    # apps/api など
+  #   directory: /
+  #   schedule:
+  #     interval: weekly

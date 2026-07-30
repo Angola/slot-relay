@@ -1,0 +1,79 @@
+name: Template Init
+
+# テンプレートから新しいリポジトリを作成した最初の push で 1 回だけ走る初期化ワークフロー。
+#   - README.md を「プロジェクト名（＝リポジトリ名）だけ」の最小構成に書き換える
+#   - VERSION を 0.1.0 にリセットする（テンプレ本体の bump 済みバージョンを引き継がない）
+#   - プレースホルダ（<プロジェクト名> / <owner>/<repo>）をリポジトリ名・オーナーに置換する
+#   - テンプレ専用ファイル（docs/TEMPLATE_GUIDE.md）とこのワークフロー・初期化マーカーを削除する
+# を行い、初期化コミットを 1 つ積む。
+#
+# テンプレート本体（下記 TEMPLATE_REPO）では実行しない。二重実行はマーカー削除で防ぐ。
+# 手動コピー（cp）で使う場合はこのワークフローは走らないので、README/VERSION は手で整える
+# （docs/TEMPLATE_GUIDE.md 参照）。
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: template-init
+  cancel-in-progress: false
+
+env:
+  # テンプレート本体のフルネーム。ここと一致するリポジトリでは初期化しない。
+  TEMPLATE_REPO: Angola/chagura-boilerplate
+
+jobs:
+  init:
+    # テンプレート本体では動かさない（is_template の設定有無に依存しないようフルネームで判定）。
+    if: github.repository != 'Angola/chagura-boilerplate'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check init marker
+        id: marker
+        run: |
+          if [ -f .github/.template-init-pending ]; then
+            echo "pending=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Initialize project from template
+        if: steps.marker.outputs.pending == 'true'
+        env:
+          REPO: ${{ github.event.repository.name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          # 1. README を「プロジェクト名だけ」の最小構成に
+          printf '# %s\n' "$REPO" > README.md
+
+          # 2. VERSION を 0.1.0 にリセット
+          echo "0.1.0" > VERSION
+
+          # 3. プレースホルダ置換（.git を除くテキストファイルのみ）
+          grep -rlZ --exclude-dir=.git -- '<プロジェクト名>' . 2>/dev/null \
+            | xargs -0 -r sed -i "s/<プロジェクト名>/${REPO}/g" || true
+          grep -rlZ --exclude-dir=.git -- '<owner>/<repo>' . 2>/dev/null \
+            | xargs -0 -r sed -i "s#<owner>/<repo>#${OWNER}/${REPO}#g" || true
+
+          # 4. テンプレ専用物を削除
+          rm -f docs/TEMPLATE_GUIDE.md
+          rm -f .github/.template-init-pending
+          rm -f .github/workflows/template-init.yml
+
+          # 5. 初期化コミット（[skip version] で version-bump をスキップ）
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: initialize project from template [skip version]"
+          git push origin main

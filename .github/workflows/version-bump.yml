@@ -1,0 +1,137 @@
+name: Version Bump
+
+# main への push（＝スカッシュマージ）ごとに VERSION を自動 bump し、
+# タグ付けと GitHub Release 作成まで行う。
+# bump レベルはコミットメッセージ（＝PR タイトル）から判定する:
+#   BREAKING CHANGE / `type!:` / [major] → major
+#   feat: / [minor]                      → minor
+#   それ以外                              → patch
+# `[skip version]` を含むコミット（bump コミット自身を含む）ではスキップする。
+#
+# 前提: リポジトリのマージ方式は「スカッシュマージのみ」（Settings > General で
+# Squash merging だけを許可）。スカッシュコミットのメッセージ = PR タイトルになる。
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# 連続マージ時の並走を防ぐ（並走すると non-fast-forward で push に失敗する）
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: "!contains(github.event.head_commit.message, '[skip version]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # トリガコミットではなく常に最新の main 上で bump する
+          ref: main
+          fetch-depth: 0
+
+      # テンプレートから作成した直後（未初期化）はバージョンを bump しない。
+      # template-init.yml が初期化を終えてマーカーを消すまで待つ。
+      - name: Skip while template init is pending
+        id: guard
+        run: |
+          if [ -f .github/.template-init-pending ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine bump level
+        if: steps.guard.outputs.skip == 'false'
+        id: level
+        env:
+          # コミットメッセージはスクリプトへ直接展開せず env 経由で渡す
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          MSG="$HEAD_MSG"
+          LEVEL=patch
+          if echo "$MSG" | grep -qE '(BREAKING CHANGE|^[a-zA-Z]+(\([^)]*\))?!:|\[major\])'; then
+            LEVEL=major
+          elif echo "$MSG" | grep -qE '(^feat(\([^)]*\))?:|\[minor\])'; then
+            LEVEL=minor
+          fi
+          echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
+
+      - name: Bump VERSION
+        if: steps.guard.outputs.skip == 'false'
+        id: bump
+        run: |
+          CURRENT="$(cat VERSION)"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "${{ steps.level.outputs.level }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          NEW="$MAJOR.$MINOR.$PATCH"
+          echo "$NEW" > VERSION
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Commit, tag and release
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # CHANGELOG の [Unreleased] を今回のバージョン節へ繰り上げる（ドリフト防止）。
+          # "## [Unreleased]" の直後に空の Unreleased と "## [x.y.z] - 日付" を差し込むことで、
+          # それまで Unreleased に溜まっていた変更が今回リリース分として確定する。
+          CHANGELOG="docs/CHANGELOG.md"
+          if [ -f "$CHANGELOG" ] && grep -q '^## \[Unreleased\]' "$CHANGELOG"; then
+            RELEASE_DATE="$(date +%Y-%m-%d)"
+            awk -v ver="$VERSION" -v date="$RELEASE_DATE" '
+              /^## \[Unreleased\]/ && !done {
+                print "## [Unreleased]"
+                print ""
+                print "## [" ver "] - " date
+                done=1
+                next
+              }
+              { print }
+            ' "$CHANGELOG" > "$CHANGELOG.tmp" && mv "$CHANGELOG.tmp" "$CHANGELOG"
+            git add "$CHANGELOG"
+          fi
+
+          git add VERSION
+          git commit -m "chore: bump version to v${VERSION} [skip version]"
+
+          # 過去の失敗 run が残した同名の残骸タグ（Release なし）は付け直す
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" > /dev/null 2>&1; then
+            if ! gh release view "v${VERSION}" > /dev/null 2>&1; then
+              echo "removing stale tag v${VERSION} (no release attached)"
+              git push origin ":refs/tags/v${VERSION}"
+            else
+              echo "::error::tag v${VERSION} already released"
+              exit 1
+            fi
+          fi
+          git tag -fa "v${VERSION}" -m "v${VERSION}"
+
+          # まれなタイミングずれに備えて push をリトライ（rebase して付け直す）
+          for i in 1 2 3 4 5; do
+            if git push origin main "refs/tags/v${VERSION}"; then
+              break
+            fi
+            if [ "$i" = "5" ]; then
+              echo "::error::failed to push bump commit after retries"
+              exit 1
+            fi
+            git tag -d "v${VERSION}"
+            git pull --rebase origin main
+            git tag -fa "v${VERSION}" -m "v${VERSION}"
+            sleep $((i * 2))
+          done
+
+          gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes
