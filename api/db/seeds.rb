@@ -27,9 +27,12 @@ dev_origins = ENV.fetch("DEV_ALLOWED_ORIGINS", "http://localhost:3000")
   booking_type.origins.find_or_create_by!(origin: origin)
 end
 
+# 平日 12:00〜19:00。60 分枠なので 12:00 / 13:00 / … / 18:00 の 7 枠になる。
+# 終了を 19:00 にしているのは、枠の終わりが受付終了を超えない仕様のため
+# （18:00 開始の枠は 19:00 に終わる。AvailabilityCalculator#slots_in_window）。
 booking_type.weekly_availabilities.destroy_all
 (1..5).each do |day_of_week|
-  booking_type.weekly_availabilities.create!(day_of_week: day_of_week, start_time: "10:00", end_time: "18:00")
+  booking_type.weekly_availabilities.create!(day_of_week: day_of_week, start_time: "12:00", end_time: "19:00")
 end
 
 puts "予約メニュー #{booking_type.slug} を作成しました（許可 Origin: #{booking_type.allowed_origins.join(", ")}）"
