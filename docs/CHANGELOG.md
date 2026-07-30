@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-30
+
 ### Fixed
 
 - `docs/DEPLOY.md` の Coolify 設定が誤っていたのを直した。
