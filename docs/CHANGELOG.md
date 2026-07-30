@@ -12,6 +12,14 @@
 
 ### Changed
 
+- 設定画面のセッション Cookie を `SameSite=Strict` から **`Lax`** に変えた。
+  Strict だと Google からのコールバック（別サイト起点のナビゲーション）で Cookie が送られず、
+  連携に成功しても必ずログイン画面へ戻ってしまう。Lax でもクロスサイトの POST には
+  送られないため CSRF 対策は維持される（署名付き CSRF トークンも別途ある）。
+- 認可コードの交換に失敗したとき、Google の応答本文（`error` / `error_description`）を
+  ログに出すようにした。Signet の例外メッセージだけでは原因が分からなかったため。
+- `CLAUDE.md` のブランチ運用に「PR 作成で止めず、CI 確認後にスカッシュマージして
+  `main` を更新するところまで完了させる」を追加した。
 - **Google カレンダー連携の認証をサービスアカウントからユーザー OAuth へ移行した**（破壊的変更）。
   経緯・却下した案は `docs/plans/2026-07-30-google-oauth-calendar-selection.md`。
   - **環境変数が変わる。** `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`

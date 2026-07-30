@@ -7,8 +7,13 @@ module GoogleOauth
   # コールバックで署名付きの Cookie を発行し、30 分だけ設定画面を開けるようにする。
   #
   # CSRF 対策は 2 段。
-  #   1. Cookie を SameSite=Strict にして、他サイトからの POST に乗らないようにする
+  #   1. Cookie を SameSite=Lax にして、他サイトからの POST に乗らないようにする
   #   2. フォームに署名付きトークンを埋め、Cookie の nonce と一致しなければ拒否する
+  #
+  # Strict ではなく Lax なのは、Google からのコールバックが「別サイト起点の
+  # ナビゲーション」になるため。Strict だとコールバック直後のリダイレクトで
+  # Cookie が送られず、連携に成功しても必ずログイン画面に戻ってしまう。
+  # Lax でもクロスサイトの POST には送られないので、CSRF 対策は維持される。
   class SetupSession
     COOKIE_NAME = :slot_relay_google_setup
     SESSION_PURPOSE = "slot-relay/google-setup-session"
@@ -59,7 +64,8 @@ module GoogleOauth
         {
           value: nil,
           httponly: true,
-          same_site: :strict,
+          # OAuth コールバック（別サイト起点のリダイレクト）で Cookie が送られるよう Lax にする
+          same_site: :lax,
           secure: !Rails.env.local?,
           expires: TTL.from_now,
           path: "/v1/admin/google"

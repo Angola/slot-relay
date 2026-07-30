@@ -68,8 +68,26 @@ module GoogleOauth
       [client, client.fetch_access_token!]
     rescue Signet::AuthorizationError => e
       # redirect_uri の不一致・コードの期限切れ・使い回しはここ。
-      Rails.logger.error("[slot-relay] 認可コードの交換に失敗しました: #{e.message}")
+      # Signet の message は「Server message:」が空になることがあるため、
+      # Google が返した本文もそのまま出す（error / error_description が入っている）。
+      Rails.logger.error(
+        "[slot-relay] 認可コードの交換に失敗しました: #{e.message} / Google の応答: #{google_error_body(e)}"
+      )
       failure(:bad_request, "Google との認可に失敗しました。最初からやり直してください。")
+    end
+
+    # Signet::AuthorizationError から Google の応答本文を取り出す。
+    # 秘密は含まれない（error / error_description のみ）。
+    def google_error_body(error)
+      response = error.try(:response)
+      return "(応答なし)" if response.blank?
+
+      status = response.try(:status)
+      body = response.try(:body)
+      body = body.read if body.respond_to?(:read)
+      "status=#{status} body=#{body.to_s.truncate(500)}"
+    rescue StandardError => e
+      "(取得できず: #{e.class})"
     end
 
     # 連携したアカウントを特定する。openid スコープを足さずに済ませるため、

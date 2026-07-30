@@ -50,11 +50,14 @@ module GoogleOauth
       assert_not SetupSession.valid_csrf?(session, session)
     end
 
-    test "Cookie は HttpOnly / SameSite=Strict で、パスが設定画面に限定される" do
+    # Strict にすると Google からのコールバック（別サイト起点のナビゲーション）で
+    # Cookie が送られず、連携直後に必ずログイン画面へ戻ってしまう。
+    # Lax でもクロスサイトの POST には送られないため CSRF 対策は維持される。
+    test "Cookie は HttpOnly / SameSite=Lax で、パスが設定画面に限定される" do
       options = SetupSession.cookie_options
 
       assert options[:httponly]
-      assert_equal :strict, options[:same_site]
+      assert_equal :lax, options[:same_site]
       assert_equal "/v1/admin/google", options[:path]
     end
   end

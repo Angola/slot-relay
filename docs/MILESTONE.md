@@ -43,6 +43,10 @@ Google カレンダー連携の予約 API を Coolify に立て、genba-tsunagu.
   二重に届かないか含めて挙動を決める（`docs/plans/2026-07-30-google-oauth-calendar-selection.md`）
 - ⬜ **Google 連携が切れたことの検知と通知**。今は 502 になるまで気づけない。
   同意画面が「テスト中」だと refresh token が 7 日で失効する点にも注意
+- ⬜ 認可 URL の `include_granted_scopes=true` を外すか決める。
+  過去に同じ OAuth クライアントへ与えた権限が合流するため、実際の同意結果に
+  `openid` / `userinfo.email` / `userinfo.profile` が混ざる。動作に害はないが、
+  最小権限に絞った建て付け（DESIGN §6.1）とは食い違う
 - ⬜ キャンセル期限（何時間前まで許可するか）を決める
 - ⬜ 予約データの保持期間・削除方針を決める
 - ⬜ 予約メニューを 2 つ目（kaizen-works-consultation など）追加して、複数サイト運用を実際に試す

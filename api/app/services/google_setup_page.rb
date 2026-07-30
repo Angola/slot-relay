@@ -35,8 +35,11 @@ class GoogleSetupPage
           <div class="card error">
             <h2>Google 連携に失敗しました</h2>
             <p>#{html_escape(message)}</p>
-            <p class="muted">最初からやり直すには、管理 API の
-              <code>POST /v1/admin/google/oauth/url</code> で認可 URL を発行し直してください。</p>
+            <p class="muted">
+              <a href="#{SETUP_PATH}">設定画面に戻ってやり直す</a>。
+              ブラウザの再読み込みでは直りません（認可コードは 1 回しか使えないため）。
+              原因はサーバーのログに出ています。
+            </p>
           </div>
         HTML
     end
