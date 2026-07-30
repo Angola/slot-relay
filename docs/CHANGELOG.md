@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-30
+
 ### Changed
 
 - 設定画面のセッション Cookie を `SameSite=Strict` から **`Lax`** に変えた。
