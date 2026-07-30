@@ -4,16 +4,36 @@ require "google/apis/calendar_v3"
 require "googleauth"
 
 module GoogleCalendar
-  # Google Calendar API（サービスアカウント）のラッパ。
+  # Google Calendar API（ユーザー OAuth）のラッパ。
   #
-  # 空き判定は FreeBusy API だけを使う。予定の件名・説明・参加者は一切取得しないため、
-  # 個人カレンダーは「予定の時間枠のみ表示」権限で共有すれば足りる。
+  # 認証は GoogleConnection に保存した refresh token を使う。アクセストークンは
+  # googleauth（Signet）が期限切れ時に自動で取り直すため、ここでは管理しない。
+  #
+  # 空き判定は FreeBusy API だけを使い、予定の件名・説明・参加者は取得しない。
   class Client
     class Error < StandardError; end
 
-    SCOPES = ["https://www.googleapis.com/auth/calendar"].freeze
+    # 全権の calendar スコープではなく、必要な操作ごとに最小のものを要求する。
+    SCOPES = [
+      # 設定画面に出すカレンダー一覧
+      "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+      # 空き判定（FreeBusy のみ。予定の内容は読まない）
+      "https://www.googleapis.com/auth/calendar.freebusy",
+      # 予約の予定を作成・削除する
+      "https://www.googleapis.com/auth/calendar.events"
+    ].freeze
+
+    TOKEN_URI = "https://oauth2.googleapis.com/token"
 
     BusyPeriod = Data.define(:start_at, :end_at)
+
+    # 設定画面に出すカレンダー 1 件。
+    CalendarEntry = Data.define(:id, :summary, :primary, :access_role) do
+      # 予定を作れるカレンダーか（登録先の候補になるのはこれだけ）。
+      def writable?
+        %w[owner writer].include?(access_role)
+      end
+    end
 
     def initialize(config: SlotRelay.config)
       @config = config
@@ -46,10 +66,37 @@ module GoogleCalendar
       end
     end
 
+    # 連携アカウントが持つカレンダーの一覧。設定画面の選択肢に使う。
+    # 権限が無いものも含めて返し、書き込み可否は CalendarEntry#writable? で判定する。
+    def calendars
+      entries = []
+      page_token = nil
+
+      loop do
+        response = with_error_handling { service.list_calendar_lists(page_token: page_token, max_results: 250) }
+        entries.concat(
+          (response.items || []).map do |item|
+            CalendarEntry.new(
+              id: item.id,
+              summary: item.summary_override.presence || item.summary,
+              primary: item.primary == true,
+              access_role: item.access_role
+            )
+          end
+        )
+        page_token = response.next_page_token
+        break if page_token.blank?
+      end
+
+      # primary を先頭に、あとは表示名順。
+      entries.sort_by { |entry| [entry.primary ? 0 : 1, entry.summary.to_s] }
+    end
+
     # 予約確定時の予定作成。作成した Google イベント ID を返す。
     #
-    # 参加者（attendees）は追加しない。ドメイン全体の委任がないサービスアカウントでは
-    # 招待を送れず、確認メールは自前の SMTP で送るため必要がない。
+    # 参加者（attendees）は追加しない。確認メールは自前の SMTP で送っているため。
+    # OAuth 化で招待自体は送れるようになったが、挙動の変更は別途判断する
+    # （docs/plans/2026-07-30-google-oauth-calendar-selection.md の積み残し）。
     def create_event(calendar_id:, summary:, description:, start_at:, end_at:, time_zone:, private_properties: {})
       event = Google::Apis::CalendarV3::Event.new(
         summary: summary,
@@ -87,26 +134,33 @@ module GoogleCalendar
       end
     end
 
+    # 保存済みの refresh token からアクセストークンを取り直す資格情報。
+    # Signet が期限切れを検知して自動で更新するため、こちらでの管理は不要。
     def authorizer
-      Google::Auth::ServiceAccountCredentials.make_creds(
-        json_key_io: StringIO.new(service_account_json),
+      connection = GoogleConnection.current
+      refresh_token = connection&.refresh_token
+
+      if refresh_token.blank?
+        raise Error, "Google アカウントが未連携です。/v1/admin/google/setup から連携してください。"
+      end
+
+      Google::Auth::UserRefreshCredentials.new(
+        client_id: config.google_oauth_client_id,
+        client_secret: config.google_oauth_client_secret,
+        refresh_token: refresh_token,
         scope: SCOPES
       )
     end
 
-    def service_account_json
-      {
-        type: "service_account",
-        client_email: config.google_service_account_email,
-        private_key: config.google_service_account_private_key,
-        token_uri: "https://oauth2.googleapis.com/token"
-      }.to_json
-    end
-
     def with_error_handling
       yield
+    rescue Signet::AuthorizationError => e
+      # refresh token が失効・取り消された（invalid_grant）ときはここに来る。
+      # 同意画面が「テスト中」だと 7 日で失効するため、再連携を促すメッセージにする。
+      raise Error,
+            "Google の認可が失効しています（再連携が必要です）: #{e.message}"
     rescue Google::Apis::Error => e
-      # 秘密鍵やゲストの個人情報がログに乗らないよう、Google 由来のメッセージだけを残す。
+      # client_secret やゲストの個人情報がログに乗らないよう、Google 由来のメッセージだけを残す。
       raise Error, "Google Calendar API エラー: #{e.class}: #{e.message}"
     end
   end

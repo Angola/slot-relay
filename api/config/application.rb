@@ -20,8 +20,14 @@ module Api
 
     config.autoload_lib(ignore: %w[assets tasks])
 
-    # API 専用。セッション・Cookie・flash は使わない。
+    # API 専用。公開 API・管理 API は Cookie を一切使わない
+    # （公開 API は URL のトークン、管理 API は X-Admin-Key ヘッダで認証する）。
     config.api_only = true
+
+    # 例外は Google 連携の設定画面だけ。同意後にブラウザで開く画面なので、
+    # 短期セッションを Cookie で持つ（api_only では Cookie ミドルウェアが外れているため戻す）。
+    # 認証に Cookie を使うのは V1::Admin::Google::SetupController のみ。
+    config.middleware.insert_before ActionDispatch::RemoteIp, ActionDispatch::Cookies
 
     # 応答・ログは日本語（CLAUDE.md の方針）。メール本文の日付書式は config/locales/ja.yml。
     config.i18n.default_locale = :ja
@@ -39,10 +45,12 @@ module Api
     config.active_record.time_zone_aware_types = [:datetime]
 
     # 予約者の個人情報をログに残さない（docs/SECURITY.md）。
+    # Google OAuth の認可コード・トークン・state もログに残さない。
     config.filter_parameters += %i[
       guest name email company phone answers
       turnstileToken turnstile_token
-      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY private_key
+      code state refresh_token access_token client_secret
+      GOOGLE_OAUTH_CLIENT_SECRET
     ]
 
     # 予約処理は同期で完結させる（ワーカーは MVP 対象外）。メールも同一リクエスト内で送る。

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_30_000006) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_30_000008) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -45,6 +45,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_30_000006) do
     t.text "description"
     t.integer "duration_minutes", default: 60, null: false
     t.string "google_booking_calendar_id"
+    t.string "google_busy_calendar_ids", default: [], null: false, array: true
     t.integer "minimum_notice_minutes", default: 1440, null: false
     t.string "name", null: false
     t.string "slug", null: false
@@ -52,6 +53,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_30_000006) do
     t.string "time_zone", default: "Asia/Tokyo", null: false
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_booking_types_on_slug", unique: true
+  end
+
+  create_table "google_connections", force: :cascade do |t|
+    t.datetime "connected_at", null: false
+    t.datetime "created_at", null: false
+    t.text "encrypted_refresh_token", null: false
+    t.string "google_account_email", null: false
+    t.string "scopes", default: [], null: false, array: true
+    t.datetime "updated_at", null: false
+    t.index ["google_account_email"], name: "index_google_connections_on_google_account_email", unique: true
   end
 
   create_table "reservations", force: :cascade do |t|
@@ -81,7 +92,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_30_000006) do
     t.index ["public_id"], name: "index_reservations_on_public_id", unique: true
     t.index ["status"], name: "index_reservations_on_status"
     t.check_constraint "start_at < end_at", name: "reservations_time_order"
-    t.exclusion_constraint "booking_calendar_id WITH =, tstzrange(start_at, end_at, '[)'::text) WITH &&", where: "(status)::text = ANY ((ARRAY['pending'::character varying, 'confirmed'::character varying])::text[])", using: :gist, name: "reservations_active_overlap_exclude"
+    t.exclusion_constraint "booking_calendar_id WITH =, tstzrange(start_at, end_at, '[)'::text) WITH &&", where: "(status)::text = ANY (ARRAY[('pending'::character varying)::text, ('confirmed'::character varying)::text])", using: :gist, name: "reservations_active_overlap_exclude"
   end
 
   create_table "weekly_availabilities", force: :cascade do |t|

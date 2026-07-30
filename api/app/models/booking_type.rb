@@ -54,6 +54,13 @@ class BookingType < ApplicationRecord
     google_booking_calendar_id.presence || SlotRelay.config.google_booking_calendar_id
   end
 
+  # 空き判定に使うカレンダー。設定画面で選んでいなければ環境変数の既定値を使う
+  # （GOOGLE_BUSY_CALENDAR_IDS からの移行期の互換）。
+  def busy_calendar_ids
+    ids = Array(google_busy_calendar_ids).compact_blank
+    ids.presence || SlotRelay.config.google_busy_calendar_ids
+  end
+
   private
 
   def time_zone_must_be_known

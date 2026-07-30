@@ -26,6 +26,7 @@ module BookingTypeSerializer
       bufferBeforeMinutes: booking_type.buffer_before_minutes,
       bufferAfterMinutes: booking_type.buffer_after_minutes,
       googleBookingCalendarId: booking_type.google_booking_calendar_id,
+      googleBusyCalendarIds: booking_type.google_busy_calendar_ids,
       allowedOrigins: booking_type.origins.map(&:origin).sort,
       weeklyAvailability: weekly_availability_payload(booking_type),
       availabilityOverrides: availability_overrides_payload(booking_type),

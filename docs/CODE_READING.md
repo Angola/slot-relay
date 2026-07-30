@@ -28,8 +28,14 @@ slot-relay/
 │   │   │   ├── reservations/creator.rb         ★予約確定・二重予約防止（中核 2）
 │   │   │   ├── reservations/canceller.rb       キャンセル
 │   │   │   ├── reservations/rescheduler.rb     日時変更（管理 API）
-│   │   │   ├── google_calendar/client.rb       Google Calendar API ラッパ
-│   │   │   ├── google_calendar/null_client.rb  未設定時のダミー（local/test のみ）
+│   │   │   ├── google_calendar/client.rb       Google Calendar API ラッパ（OAuth）
+│   │   │   ├── google_calendar/null_client.rb  未連携時のダミー（local/test のみ）
+│   │   │   ├── google_calendar/unavailable_client.rb  本番の未連携時。使うと 502 にする
+│   │   │   ├── google_oauth/authorization.rb   同意画面の URL と state の署名
+│   │   │   ├── google_oauth/callback.rb        認可コード → refresh token の交換
+│   │   │   ├── google_oauth/setup_session.rb   設定画面の短期セッションと CSRF
+│   │   │   ├── google_setup_page.rb            設定画面の HTML（api_only なので文字列で組む）
+│   │   │   ├── google_calendar_selection.rb    選んだカレンダーを予約メニューへ保存
 │   │   │   ├── booking_types/upsert.rb         予約メニューの登録・更新
 │   │   │   ├── turnstile_verifier.rb           Cloudflare Turnstile
 │   │   │   ├── origin_allow_list.rb            プリフライト用の Origin 集合
@@ -77,6 +83,8 @@ slot-relay/
 | オーバーライド（availability override） | 特定日の休業・時間変更。曜日別設定を**置き換える** |
 | 仮確保（pending） | 予約 POST の最初に作る 5 分間の押さえ。同時リクエストを DB で直列化するため |
 | Busy 時間 | Google FreeBusy API が返す「予定が入っている区間」。件名・内容は取得しない |
+| Google 連携（GoogleConnection） | 管理者の Google アカウント 1 件。refresh token を暗号化して保存する単一行 |
+| 空き判定カレンダー / 登録先カレンダー | 前者は予定があれば枠を外すカレンダー（複数）、後者は予約の予定を作るカレンダー（1 つ）。設定画面から選ぶ |
 | バッファ | 枠の前後に確保する空き時間。占有区間は `[start - before, end + after)` |
 | キャンセルトークン | 確認メールに載せる生のシークレット。DB にはハッシュのみ保存 |
 | Idempotency-Key | 予約 POST の必須ヘッダ。再送で二重予約にならないようにする |
@@ -95,7 +103,12 @@ slot-relay/
 | `api/test/services/turnstile_verifier_test.rb` | Turnstile の成功・失敗・障害時（fail closed） |
 | `api/test/controllers/` | HTTP ステータス・CORS・Origin 検証・レートリミット・OpenAPI の整合 |
 | `api/test/mailers/mailers_test.rb` | 文面・タイムゾーン表記・キャンセル URL の出し分け |
+| `api/test/models/google_connection_test.rb` | refresh token の暗号化・単一行の維持・復号失敗時の扱い |
+| `api/test/services/google_oauth/` | 認可 URL・state の署名と失効・コード交換・設定画面セッションと CSRF |
+| `api/test/services/google_calendar_selection_test.rb` | カレンダー選択の保存（部分失敗でロールバック） |
+| `api/test/controllers/v1/admin/google_*_test.rb` | 連携フローの認証境界・CSRF・画面表示（トークンを出さないこと） |
 | `api/test/integration/booking_flow_test.rb` | **ユースケース**: 登録 → 空き枠 → 予約 → 照会 → キャンセル |
+| `api/test/integration/google_connection_flow_test.rb` | **ユースケース**: 連携 → カレンダー選択 → 空き枠に反映 |
 | `api/test/integration/double_booking_test.rb` | **同時実行**: 実スレッド・別コネクションでの二重予約防止 |
 | `web/test/bookingApi.test.ts` | API クライアント（Idempotency-Key、エラー変換） |
 | `web/test/bookingFlow.test.tsx` | **画面遷移**: 日付 → 時間 → 入力 → 完了、枠が埋まった場合の巻き戻し |

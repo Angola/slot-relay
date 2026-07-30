@@ -7,7 +7,7 @@
 
 | 環境 | 用途 | URL | デプロイ方法 |
 | --- | --- | --- | --- |
-| local | 開発 | api: `http://localhost:3001` / web: `http://localhost:3000` | 手動（下記） |
+| local | 開発 | api: `http://localhost:3011` / web: `http://localhost:3012` | `docker compose up -d`（下記） |
 | staging | 用意しない（未決事項 DESIGN §14） | — | — |
 | production | 本番 | `https://booking-api.genba-tsunagu.jp` | Coolify の自動デプロイ（`main` へのマージ） |
 
@@ -16,22 +16,38 @@
 
 ## ローカル開発
 
-```bash
-# API
-cd api
-bin/setup                      # bundle install + DB 作成・マイグレーション
-bin/rails db:seed              # 開発用の予約メニューを作る
-bin/rails server -p 3001
+Docker Compose で API + PostgreSQL 16 + 参照実装 UI がまとめて立ち上がる。
+ホストに Ruby・PostgreSQL を入れる必要はない。設計判断は
+`docs/plans/2026-07-30-local-compose.md` を参照。
 
-# 参照実装 UI（別ターミナル）
-cd web
-npm install
-cp .env.example .env.local      # NEXT_PUBLIC_BOOKING_API_URL=http://localhost:3001 に直す
-npm run dev
+```bash
+cp .env.example .env       # ポートを変えたいときだけ編集する
+docker compose up -d       # 初回は gem / npm の導入で数分かかる
+docker compose logs -f api
 ```
 
-Google サービスアカウントが未設定のときは `GoogleCalendar::NullClient` が使われ、
+| サービス | ホスト側 | 備考 |
+| --- | --- | --- |
+| api | http://localhost:3011 | Swagger UI は `/docs` |
+| web | http://localhost:3012 | 参照実装。デプロイ対象ではない |
+| db | `localhost:55432` | postgres / postgres |
+
+既定ポートを 3000 / 3001 からずらしているのは衝突を避けるため。`.env` で変更できる。
+
+```bash
+docker compose exec -e RAILS_ENV=test api bin/rails test   # テスト
+docker compose exec api bin/rails console
+docker compose exec db psql -U postgres -d slot_relay_development
+docker compose down        # 停止（DB データは残る）
+docker compose down -v     # 停止 + DB データ削除
+```
+
+Google 連携が未設定のときは `GoogleCalendar::NullClient` が使われ、
 Busy 時間は空・予定は作成されない（起動時に警告が出る）。本番では未設定だと起動時に例外になる。
+確認メールは development では SMTP へ送らず `api/tmp/mails/` にファイル出力される。
+
+ホストに Ruby 3.3 と PostgreSQL 16 が揃っているなら、compose を使わず
+`api/README.md` の手順で直接動かすこともできる。
 
 ## 必要な環境変数
 
@@ -42,14 +58,15 @@ Busy 時間は空・予定は作成されない（起動時に警告が出る）
 | `RAILS_ENV` | 実行環境 | `production` |
 | `PORT` | 待ち受けポート | `3001` |
 | `DATABASE_URL` | Coolify PostgreSQL の接続 URL | `postgres://...` |
-| `SECRET_KEY_BASE` | **本番で必須。** `openssl rand -hex 64` で生成。Rails の暗号化 credentials は使わず、秘密はすべて環境変数に置くため（`config/master.key` をイメージに同梱しない） | — |
-| `PUBLIC_BASE_URL` | 公開 URL（キャンセル URL・メールのリンク生成） | `https://booking-api.genba-tsunagu.jp` |
+| `SECRET_KEY_BASE` | **本番で必須。** `openssl rand -hex 64` で生成。Rails の暗号化 credentials は使わず、秘密はすべて環境変数に置くため（`config/master.key` をイメージに同梱しない）。**Google の refresh token はこの値から導出した鍵で暗号化している。差し替えると再連携が必要**（`docs/SECURITY.md`） | — |
+| `PUBLIC_BASE_URL` | 公開 URL（キャンセル URL・メールのリンク・OAuth のリダイレクト URI 生成） | `https://booking-api.genba-tsunagu.jp` |
 | `ALLOWED_HOSTS` | Host ヘッダ検証（カンマ区切り。未設定なら検証しない） | `booking-api.genba-tsunagu.jp` |
 | `ADMIN_API_KEY` | 管理 API の共有シークレット。**32 文字以上**。未設定なら管理 API は 503 | `openssl rand -base64 48` で生成 |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | サービスアカウントのメール | `slot-relay@....iam.gserviceaccount.com` |
-| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | 秘密鍵（改行は `\n` のままでよい） | `-----BEGIN PRIVATE KEY-----\n...` |
-| `GOOGLE_BUSY_CALENDAR_IDS` | 空き判定に使うカレンダー ID（カンマ区切り） | `me@example.com` |
-| `GOOGLE_BOOKING_CALENDAR_ID` | 予約の登録先カレンダー ID | `xxxx@group.calendar.google.com` |
+| `GOOGLE_OAUTH_CLIENT_ID` | OAuth 2.0 クライアント ID（種別: ウェブ アプリケーション） | `xxxx.apps.googleusercontent.com` |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | 同上のシークレット | — |
+| `GOOGLE_OAUTH_REDIRECT_URI` | 省略時は `PUBLIC_BASE_URL` + `/v1/admin/google/oauth/callback` | — |
+| `GOOGLE_BUSY_CALENDAR_IDS` | 空き判定カレンダーの**既定値**（カンマ区切り）。通常は設定画面から選ぶので不要 | `me@example.com` |
+| `GOOGLE_BOOKING_CALENDAR_ID` | 予約の登録先カレンダーの**既定値**。通常は設定画面から選ぶので不要 | `xxxx@group.calendar.google.com` |
 | `SMTP_HOST` / `SMTP_PORT` | SMTP サーバー（未設定なら送信しない） | `smtp.example.com` / `587` |
 | `SMTP_USER` / `SMTP_PASSWORD` | SMTP 認証情報 | — |
 | `SMTP_FROM` | 送信元 | `info@genba-tsunagu.jp` |
@@ -65,14 +82,27 @@ Busy 時間は空・予定は作成されない（起動時に警告が出る）
 
 ## 初回セットアップ
 
-### 1. Google Cloud
+### 1. Google Cloud（OAuth クライアントの作成）
 
 1. プロジェクトを作り **Google Calendar API** を有効にする
-2. サービスアカウントを作り、JSON キーを発行する
-3. Google カレンダー側で 2 種類の共有を設定する（DESIGN §6.1）
-   - **空き判定対象**（メインカレンダー等）→ サービスアカウントに「**予定の時間枠のみ表示**」
-   - **予約登録先**（無料相談予約など専用カレンダー）→ サービスアカウントに「**予定の変更権限**」
-4. それぞれのカレンダー ID を `GOOGLE_BUSY_CALENDAR_IDS` / `GOOGLE_BOOKING_CALENDAR_ID` に設定する
+2. **OAuth 同意画面**を設定する
+   - User type は「外部」
+   - スコープに次の 3 つを追加する（全権の `.../auth/calendar` は不要）
+     - `.../auth/calendar.calendarlist.readonly`
+     - `.../auth/calendar.freebusy`
+     - `.../auth/calendar.events`
+   - ⚠️ **公開ステータスを「本番環境」にする。**
+     「テスト中」のままだと **refresh token が 7 日で失効**し、予約 API が毎週止まる。
+     Calendar は機密スコープなので未審査だと「確認されていないアプリ」の警告が出るが、
+     自分のアカウントで使うぶんには通過できる。
+3. **認証情報 → OAuth 2.0 クライアント ID** を種別「**ウェブ アプリケーション**」で作る
+   - 承認済みのリダイレクト URI に
+     `https://booking-api.genba-tsunagu.jp/v1/admin/google/oauth/callback` を登録する
+     （`GOOGLE_OAUTH_REDIRECT_URI` を設定する場合はその値と完全一致させる）
+4. クライアント ID / シークレットを `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` に設定する
+
+カレンダーの選択はデプロイ後に画面から行う（下記「Google アカウントの連携」）。
+サービスアカウントのときに必要だった**カレンダーの個別共有はもう要らない**。
 
 ### 2. Cloudflare Turnstile
 
@@ -130,7 +160,36 @@ curl -X POST https://booking-api.genba-tsunagu.jp/v1/admin/booking-types \
   }'
 ```
 
-### 5. サイト側（genba-tsunagu.jp）
+### 5. Google アカウントの連携とカレンダーの選択
+
+デプロイ後に一度だけ行う。**未連携のうちは空き取得・予約登録が 502 になる**
+（黙って「全部空き」にしないための仕様）。
+
+```bash
+# 1. 同意画面の URL を発行する（10 分で失効）
+curl -X POST https://booking-api.genba-tsunagu.jp/v1/admin/google/oauth/url \
+  -H "X-Admin-Key: $ADMIN_API_KEY"
+# → { "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?..." }
+```
+
+2. `authUrl` をブラウザで開き、予約を入れたい Google アカウントで同意する
+   （未審査アプリの警告が出たら「詳細」→「安全でないページに移動」で進む）
+3. 同意後、自動でカレンダー設定画面（`/v1/admin/google/setup`）に移る
+4. 予約メニューごとに **登録先カレンダー**（ラジオ）と
+   **空き判定に使うカレンダー**（チェックボックス）を選んで保存する
+
+設定画面のセッションは 30 分で切れる。開き直したいときは 1 からやり直すか、
+`X-Admin-Key` ヘッダを付けて直接開く。
+
+Swagger UI（`/docs`）からも同じ操作ができる。カレンダー ID を直接指定したい場合は
+`GET /v1/admin/google/calendars` で一覧を取り、
+`PATCH /v1/admin/booking-types/:id` の `googleBookingCalendarId` /
+`googleBusyCalendarIds` に入れてもよい。
+
+**連携が切れたとき**（パスワード変更・6 か月未使用・手動失効・`SECRET_KEY_BASE` の差し替え）は
+ログに「Google の認可が失効しています」が出て 502 になる。上の手順でやり直す。
+
+### 6. サイト側（genba-tsunagu.jp）
 
 サイト側に置く設定は 3 つだけ。Google の認証情報・管理 API キーは置かない。
 

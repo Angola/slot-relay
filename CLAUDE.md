@@ -18,7 +18,10 @@
 -->
 
 - **`docs/`** — 全プロジェクト横断のドキュメント・資料は**リポジトリ最上位の `docs/`** に集約する。
-- **ルート直下** — `CLAUDE.md` / `VERSION` / `.github`。
+- **ルート直下** — `CLAUDE.md` / `README.md` / `VERSION` / `.github` /
+  `compose.yaml` / `.env.example`。
+  compose 関連を最上位に置くのは、ビルドコンテキストが `api/` と `web/` にまたがるため。
+  それ以外のドキュメント・資料をルートへ増やさない方針は変わらない。
 
 ## 出力・言語
 

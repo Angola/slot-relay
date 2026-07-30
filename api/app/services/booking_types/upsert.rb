@@ -35,6 +35,7 @@ module BookingTypes
       booking_type.assign_attributes(mapped_attributes)
 
       BookingType.transaction do
+        raise ActiveRecord::Rollback unless assign_busy_calendar_ids
         raise ActiveRecord::Rollback unless save_booking_type
         raise ActiveRecord::Rollback unless replace_collections
       end
@@ -52,6 +53,23 @@ module BookingTypes
       ATTRIBUTE_MAP.filter_map { |json_key, attribute|
         [attribute, payload[json_key]] if payload.key?(json_key)
       }.to_h
+    end
+
+    # 空き判定に使うカレンダー。配列カラムなので ATTRIBUTE_MAP には載せず、
+    # 「文字列の配列であること」をここで確かめてから入れる。
+    def assign_busy_calendar_ids
+      return true unless payload.key?("googleBusyCalendarIds")
+
+      values = array_payload("googleBusyCalendarIds")
+      return false if values.nil?
+
+      unless values.all?(String)
+        errors << "googleBusyCalendarIds は文字列の配列で指定してください"
+        return false
+      end
+
+      booking_type.google_busy_calendar_ids = values.map(&:strip).reject(&:blank?).uniq
+      true
     end
 
     def save_booking_type

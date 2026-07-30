@@ -1,0 +1,105 @@
+# ローカル開発用の compose。**本番デプロイには使わない**（本番は Coolify・docs/DEPLOY.md 参照）。
+#
+#   docker compose up -d          # 起動（初回は gem/npm の導入とマイグレーションで数分）
+#   docker compose logs -f api    # ログ
+#   docker compose down           # 停止（データは残る）
+#   docker compose down -v        # 停止 + DB データ削除
+#
+# ポートはこのリポジトリ外のサービスと衝突しやすいので、すべて .env で上書きできる。
+# 既定値の由来は docs/plans/2026-07-30-local-compose.md。
+
+name: slot-relay
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: slot_relay_development
+    ports:
+      # ホストから psql / GUI クライアントで覗くため。コンテナ間は 5432 のまま。
+      - "${DB_PORT:-55432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d slot_relay_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    # ホストと同じ uid/gid で動かし、バインドマウント先に root 所有のファイルを作らない。
+    # id が 1000 以外なら .env で DOCKER_UID / DOCKER_GID を指定する。
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    environment:
+      RAILS_ENV: development
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      # ローカル専用のダミー。管理 API は 32 文字以上でないと 503 になる。
+      # 本番の値は Coolify の環境変数に入れる（リポジトリには置かない）。
+      ADMIN_API_KEY: "${ADMIN_API_KEY:-local-development-admin-key-not-a-secret}"
+      # 連携フローのリダイレクト先。Google Cloud の「承認済みのリダイレクト URI」と
+      # 完全一致させる必要がある。
+      PUBLIC_BASE_URL: "http://localhost:${API_PORT:-3011}"
+      # 予約フォーム（web）のオリジン。seeds が許可 Origin として登録する。
+      DEV_ALLOWED_ORIGINS: "http://localhost:${WEB_PORT:-3012}"
+      # キャンセル URL を web のローカル URL で組み立てる
+      CANCEL_URL_BASE: "http://localhost:${WEB_PORT:-3012}"
+    env_file:
+      # Google OAuth などの秘密はここに置く（.gitignore 済み・api/.env.example を複製して作る）
+      - path: ./api/.env
+        required: false
+    ports:
+      - "${API_PORT:-3011}:3001"
+    volumes:
+      - ./api:/rails
+      # VERSION は api/ の外にあるので個別にマウントする（/health が返す）
+      - ./VERSION:/VERSION:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      bash -c "
+        bundle check || bundle install &&
+        bin/rails db:prepare &&
+        bin/rails db:seed &&
+        rm -f tmp/pids/server.pid &&
+        exec bin/rails server -b 0.0.0.0 -p 3001
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  # 予約フォームの参照実装。デプロイ対象ではない（README 参照）。
+  web:
+    image: node:22-slim
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    working_dir: /web
+    environment:
+      # ブラウザから見た API の URL。コンテナ名ではなくホストのポートを指す。
+      NEXT_PUBLIC_BOOKING_API_URL: "http://localhost:${API_PORT:-3011}"
+      NEXT_PUBLIC_BOOKING_TYPE: genba-tsunagu-consultation
+      # Turnstile はローカルでは無効（未設定ならウィジェットを描画しない）
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ""
+    ports:
+      - "${WEB_PORT:-3012}:3000"
+    volumes:
+      - ./web:/web
+    depends_on:
+      - api
+    command: >
+      sh -c "
+        npm install &&
+        exec npm run dev
+      "
+
+volumes:
+  db-data:

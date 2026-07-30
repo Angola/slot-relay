@@ -159,7 +159,7 @@ class AvailabilityCalculator
   # 空き判定に使うカレンダー。登録先カレンダー自身も必ず含める
   # （Google 側で直接入れた予定や、他メニュー経由の予約を二重に埋めないため）。
   def busy_calendar_ids
-    (SlotRelay.config.google_busy_calendar_ids + [booking_type.booking_calendar_id]).compact_blank.uniq
+    (booking_type.busy_calendar_ids + [booking_type.booking_calendar_id]).compact_blank.uniq
   end
 
   # DB 上の有効な予約。**予約メニュー単位ではなく登録先カレンダー単位**で引く。

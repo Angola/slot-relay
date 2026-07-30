@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+#
+# ローカル開発用のイメージ。本番用は同ディレクトリの Dockerfile（そちらがデプロイ対象）。
+#
+# 本番イメージとの違い:
+#   - ソースは焼き込まず compose がバインドマウントする（コード変更が即反映される）
+#   - development / test グループの gem も入れる（debug・webmock・dotenv-rails）
+#   - gem は api/vendor/bundle に置く（.gitignore 済み・ホスト側に残るので再ビルドが速い）
+#   - ホストと同じ uid/gid で動かし、リポジトリに root 所有のファイルを作らない
+
+ARG RUBY_VERSION=3.3.6
+FROM docker.io/library/ruby:$RUBY_VERSION-slim
+
+# libpq-dev / build-essential は pg gem のネイティブ拡張のビルドに要る。
+# postgresql-client は bin/rails db:* が pg_dump 等を呼ぶため。
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+      build-essential git libpq-dev pkg-config curl postgresql-client && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# Gemfile.lock の BUNDLED WITH に合わせる。
+# 4.x のチェックサム付き lock は ruby 同梱の bundler 2.x では読めない。
+ARG BUNDLER_VERSION=4.0.9
+RUN gem install bundler -v "$BUNDLER_VERSION" --no-document
+
+ENV BUNDLE_PATH=/rails/vendor/bundle \
+    BUNDLE_APP_CONFIG=/rails/.bundle \
+    HOME=/rails/tmp
+
+WORKDIR /rails
+
+EXPOSE 3001

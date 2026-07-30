@@ -51,7 +51,7 @@ Coolify 上のリソースは次の 2 つだけ。Web アプリ・Redis・ワー
 
 | 環境 | 用途 | URL |
 | --- | --- | --- |
-| local | 開発 | api: `http://localhost:3001` / web: `http://localhost:3000` |
+| local | 開発 | api: `http://localhost:3011` / web: `http://localhost:3012`（`compose.yaml`・`.env` で変更可） |
 | staging | なし（MVP では用意しない） | — |
 | production | 本番 | `https://booking-api.genba-tsunagu.jp` |
 
@@ -65,7 +65,7 @@ API ドメインは独立させ、genba-tsunagu.jp のデプロイと分離す�
 | 言語 | Ruby 3.3 |
 | DB | PostgreSQL 16（`btree_gist` 拡張が必須） |
 | 参照実装 UI | Next.js 15（App Router）・React 19・TypeScript |
-| Google 認証 | サービスアカウント（一般ユーザー向け OAuth は実装しない） |
+| Google 認証 | ユーザー OAuth（refresh token を暗号化して DB に保存。§6.1） |
 | Bot 対策 | Cloudflare Turnstile |
 | レートリミット | rack-attack |
 | メール | ActionMailer + SMTP |
@@ -400,21 +400,55 @@ NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 
 ## 6. 外部連携
 
-### 6.1 Google Calendar（サービスアカウント）
+### 6.1 Google Calendar（ユーザー OAuth）
 
-利用者が自分だけなので、一般ユーザー向けの Google OAuth は実装しない。
-Google Cloud のサービスアカウントを使い、カレンダーを 2 種類に分ける。
+> 以前はサービスアカウントを使っていた。カレンダーを画面から選べるようにするため
+> ユーザー OAuth へ移行した。移行の理由と失ったもの（refresh token の失効リスク・
+> 権限分離の後退）は `docs/plans/2026-07-30-google-oauth-calendar-selection.md`。
 
-| 用途 | 共有権限 | 環境変数 |
+Google Cloud の「OAuth 2.0 クライアント ID（ウェブ アプリケーション）」を使い、
+管理者が自分の Google アカウントを 1 つだけ連携する。
+
+**要求するスコープ**（全権の `calendar` は要求しない）
+
+| スコープ | 用途 |
+| --- | --- |
+| `calendar.calendarlist.readonly` | カレンダー一覧の取得（設定画面の選択肢） |
+| `calendar.freebusy` | 空き判定。FreeBusy API のみで、件名・説明・参加者は取得しない |
+| `calendar.events` | 予約の予定を作成・削除する |
+
+**連携フロー**（管理 API キーを URL に載せないため 2 段構え）
+
+```
+POST /v1/admin/google/oauth/url  (X-Admin-Key)  → { authUrl }
+        ↓ ブラウザで authUrl を開き、Google の同意画面を通す
+GET  /v1/admin/google/oauth/callback?code=&state=
+        ↓ refresh token を暗号化して保存し、短期セッション Cookie を発行
+GET  /v1/admin/google/setup      （カレンダーを選ぶ画面）
+```
+
+`state` は署名付きトークン（10 分で失効）。コールバックは Google からのリダイレクトで
+`X-Admin-Key` を付けられないため、正当性はこの署名で確認する。
+
+**使うカレンダーの指定**
+
+| 用途 | 保存先 | 未設定時のフォールバック |
 | --- | --- | --- |
-| 空き判定対象（メインカレンダー等） | **予定の時間枠のみ表示** | `GOOGLE_BUSY_CALENDAR_IDS`（カンマ区切り） |
-| 予約登録先（無料相談予約など） | 予定の変更権限 | `GOOGLE_BOOKING_CALENDAR_ID` |
+| 空き判定対象 | `booking_types.google_busy_calendar_ids`（配列） | `GOOGLE_BUSY_CALENDAR_IDS` |
+| 予約の登録先 | `booking_types.google_booking_calendar_id` | `GOOGLE_BOOKING_CALENDAR_ID` |
 
-これにより、個人予定のタイトル・内容を API サーバーへ渡さずに「予定が入っている時間」だけを
-空き判定に使える。空き判定には **FreeBusy API のみ**を使い、予定の件名・説明・参加者は取得しない。
+**予約メニューごとに**選べる。設定画面のほか、管理 API
+（`GET /v1/admin/google/calendars` で一覧 → `PATCH /v1/admin/booking-types/:id`）でも指定できる。
+登録先カレンダー自身は、選択に含めなくても必ず空き判定の対象になる。
 
-参加者（attendees）は予定に追加しない。ドメイン全体の委任がないサービスアカウントでは招待を送れず、
-確認メールは自前の SMTP で送るため必要がない。
+**未連携・失効時の扱い**
+
+黙って「Busy 時間が空」＝全部空きとして予約を受けてしまうのを避けるため、
+本番では `GoogleCalendar::UnavailableClient` を返し、使おうとした時点で **502**（`CALENDAR_ERROR`）にする。
+ローカル開発では `NullClient` にフォールバックする（起動時に警告）。
+
+参加者（attendees）は予定に追加しない。OAuth 化で招待自体は送れるようになったが、
+確認メールは自前の SMTP で送っており、挙動の変更は別途判断する（`docs/MILESTONE.md`）。
 
 ### 6.2 Google 予定の内容
 
@@ -459,8 +493,11 @@ MVP 対象外。ユーザー投稿コンテンツを公開する機能はない
 - 保持する個人情報は予約者の氏名・メール・会社名・電話番号・`answers` のみ。
 - **通常ログに個人情報を出さない。** `config.filter_parameters` で
   `guest` / `name` / `email` / `company` / `phone` / `answers` / `turnstileToken` を除外する。
-- **Google サービスアカウントの秘密鍵をログへ出さない。** `private_key` もフィルタ対象。
+- **Google の認可コード・トークンをログへ出さない。** `code` / `state` / `refresh_token` /
+  `access_token` / `client_secret` もフィルタ対象。
   Google API のエラーは Google 由来のメッセージだけをログに残す。
+- **refresh token は平文で保存しない。** `SECRET_KEY_BASE` から導出した鍵で暗号化して DB に入れ、
+  API 応答・設定画面には一切出さない。
 - キャンセルトークンは SHA-256 ハッシュで保存する。生の値は発行時のメモリ上とメール本文のみ。
 - 予約者の個人情報は公開 API では**トークンを持っている本人にだけ**返す。
 - Google カレンダーの予定の件名・説明・参加者は公開 API へ一切返さない（FreeBusy しか取得しない）。
